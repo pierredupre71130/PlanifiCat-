@@ -280,6 +280,20 @@ main {
   font-weight: 600;
   flex: 1 1 130px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.chip-emoji { font-size: 1rem; }
+.result-time-input {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+  padding: 0.1rem 0;
+  width: auto;
 }
 .result-chip .gap {
   display: block;
@@ -290,6 +304,17 @@ main {
 }
 .result-chip.warn { background: var(--warn-bg); color: var(--warn); }
 .result-chip.danger { background: var(--danger-bg); color: var(--danger); }
+.result-chip.manual { box-shadow: inset 0 0 0 2px var(--accent); }
+.reset-override {
+  margin-top: 0.3rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+  font-size: 0.75rem;
+  padding: 0;
+  cursor: pointer;
+}
 
 @media (max-width: 420px) {
   .topbar h1 { font-size: 1.15rem; }

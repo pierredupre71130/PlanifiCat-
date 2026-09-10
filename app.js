@@ -131,10 +131,24 @@
   }
 
   function buildSchedulerInput() {
-    return listDates().map((iso) => ({
-      date: iso,
-      absences: getDayData(iso).absences.filter((a) => a.start && a.end),
-    }));
+    return listDates().map((iso) => {
+      const day = getDayData(iso);
+      return {
+        date: iso,
+        absences: day.absences.filter((a) => a.start && a.end),
+        overrides: day.overrides || [null, null],
+      };
+    });
+  }
+
+  // Fixe ou libère manuellement l'horaire du créneau `slotIndex` (0 ou 1)
+  // d'un jour. `time` à null repasse ce créneau en calcul automatique.
+  function setOverride(iso, slotIndex, time) {
+    const day = getDayData(iso);
+    if (!Array.isArray(day.overrides)) day.overrides = [null, null];
+    day.overrides[slotIndex] = time;
+    saveState();
+    recompute();
   }
 
   function buildSettings() {
@@ -170,25 +184,62 @@
     return byDate;
   }
 
+  function minutesToHM(min) {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
   function renderDetailResults() {
     const card = dayDetailEl.querySelector(`[data-date="${selectedDate}"]`);
     if (!card) return;
     const resultsEl = card.querySelector('.results');
     resultsEl.innerHTML = '';
     const times = scheduleByDate()[selectedDate] || [];
-    for (const t of times) {
+    times.forEach((t, idx) => {
+      const isManual = t.warnings.includes('manuel');
       const chip = document.createElement('div');
       let cls = 'result-chip';
       if (t.warnings.includes('creneau-impossible')) cls += ' danger';
       else if (t.warnings.includes('ecart-hors-tolerance') || t.warnings.includes('nuit')) cls += ' warn';
+      if (isManual) cls += ' manual';
       chip.className = cls;
-      const gapText = t.gapFromPrevLabel ? `écart ${t.gapFromPrevLabel}` : '';
-      let warnText = '';
-      if (t.warnings.includes('creneau-impossible')) warnText = ' · créneau impossible !';
-      else if (t.warnings.includes('nuit')) warnText = ' · horaire de nuit';
-      chip.innerHTML = `💉 ${t.time}<span class="gap">${gapText}${warnText}</span>`;
+
+      let noteText = t.gapFromPrevLabel ? `écart ${t.gapFromPrevLabel}` : '';
+      if (t.warnings.includes('creneau-impossible')) noteText += ' · créneau impossible !';
+      else if (t.warnings.includes('nuit')) noteText += ' · horaire de nuit';
+      if (isManual) noteText += ' · fixé manuellement';
+
+      const label = document.createElement('span');
+      label.className = 'chip-emoji';
+      label.textContent = '💉';
+
+      const input = document.createElement('input');
+      input.type = 'time';
+      input.className = 'result-time-input';
+      input.value = minutesToHM(t.minutes);
+      input.addEventListener('change', () => setOverride(selectedDate, idx, input.value));
+
+      const gapSpan = document.createElement('span');
+      gapSpan.className = 'gap';
+      gapSpan.textContent = noteText;
+
+      chip.appendChild(label);
+      chip.appendChild(input);
+      chip.appendChild(gapSpan);
+
+      if (isManual) {
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.className = 'reset-override';
+        resetBtn.title = 'Revenir au calcul automatique';
+        resetBtn.textContent = '↺ auto';
+        resetBtn.addEventListener('click', () => setOverride(selectedDate, idx, null));
+        chip.appendChild(resetBtn);
+      }
+
       resultsEl.appendChild(chip);
-    }
+    });
   }
 
   const summaryTableBody = document.getElementById('summaryTableBody');
@@ -218,6 +269,7 @@
           let note = '';
           if (t.warnings.includes('creneau-impossible')) note = 'impossible';
           else if (t.warnings.includes('nuit')) note = 'nuit';
+          if (t.warnings.includes('manuel')) note = note ? `${note}, manuel` : 'manuel';
           td.innerHTML = `${t.time}${note ? `<span class="cell-note">${note}</span>` : ''}`;
         } else {
           td.textContent = '—';
@@ -329,6 +381,7 @@
   function selectDate(iso) {
     selectedDate = iso;
     renderDayDetail();
+    renderDetailResults(); // le calcul (lastSchedule) existe déjà pour tous les jours, il manquait juste son affichage sur le jour nouvellement sélectionné
     updateStripStatuses();
     const chip = daystripEl.querySelector(`[data-date="${iso}"]`);
     if (chip) chip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });

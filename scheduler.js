@@ -70,6 +70,11 @@ function isInWindow(t, start, end) {
  *   avoidNightStart?: string, // début de la plage nuit à éviter si possible (ex: '23:00')
  *   avoidNightEnd?: string,   // fin de cette plage (ex: '05:00') ; ignoré si égal au début
  * }} settings
+ *
+ * Chaque jour peut aussi porter `overrides: [string|null, string|null]` pour
+ * fixer manuellement l'horaire d'une des 2 injections ('HH:MM'). Le créneau
+ * fixé n'est alors plus optimisé : les jours voisins s'ajustent autour de
+ * lui exactement comme autour d'une ancre, dans les deux sens.
  */
 function computeSchedule(days, settings = {}) {
   if (!days || days.length === 0) return [];
@@ -93,8 +98,9 @@ function computeSchedule(days, settings = {}) {
   for (const day of days) {
     const blocked = buildBlocked(day.absences, margin);
     const dayIdx = dayOffset(day.date, baseDate);
-    slots.push({ dayIdx, date: day.date, blocked });
-    slots.push({ dayIdx, date: day.date, blocked });
+    const overrides = Array.isArray(day.overrides) ? day.overrides : [null, null];
+    slots.push({ dayIdx, date: day.date, blocked, override: overrides[0] ?? null });
+    slots.push({ dayIdx, date: day.date, blocked, override: overrides[1] ?? null });
   }
 
   let anchorAbs = null;
@@ -107,7 +113,11 @@ function computeSchedule(days, settings = {}) {
   for (let i = 0; i < slots.length; i++) {
     const slot = slots[i];
     const layer = new Map();
-    for (const t of grid) {
+    // Un créneau fixé manuellement n'a qu'un seul point possible dans sa
+    // grille : le DP le traverse alors obligatoirement, et les créneaux
+    // voisins s'ajustent naturellement autour, sans code spécifique.
+    const slotGrid = slot.override != null ? [parseHM(slot.override)] : grid;
+    for (const t of slotGrid) {
       const absT = slot.dayIdx * DAY_MIN + t;
       const feasPenalty = isFeasible(t, slot.blocked) ? 0 : INFEASIBLE_PENALTY;
 
@@ -162,6 +172,7 @@ function computeSchedule(days, settings = {}) {
     const warnings = [];
     if (!isFeasible(t, slot.blocked)) warnings.push('creneau-impossible');
     if (hasNightWindow && isInWindow(t, nightStart, nightEnd)) warnings.push('nuit');
+    if (slot.override != null) warnings.push('manuel');
 
     let gapFromPrev = null;
     if (i > 0) {
