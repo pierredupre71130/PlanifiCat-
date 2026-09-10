@@ -98,10 +98,16 @@
   const WEEKDAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
   const WEEKDAYS_SHORT = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
   const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const MONTHS_SHORT = ['jan.', 'fév.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
   function formatDayTitle(iso) {
     const d = new Date(iso + 'T00:00:00');
     return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  }
+
+  function formatShortDate(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    return `${WEEKDAYS_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
   }
 
   const daystripEl = document.getElementById('daystrip');
@@ -155,6 +161,7 @@
     lastSchedule = days.length ? computeSchedule(days, buildSettings()) : [];
     updateStripStatuses();
     renderDetailResults();
+    renderSummaryTable();
   }
 
   function scheduleByDate() {
@@ -183,6 +190,55 @@
       resultsEl.appendChild(chip);
     }
   }
+
+  const summaryTableBody = document.getElementById('summaryTableBody');
+  const printRangeEl = document.getElementById('printRange');
+
+  function renderSummaryTable() {
+    const byDate = scheduleByDate();
+    const dates = listDates();
+    summaryTableBody.innerHTML = '';
+    for (const iso of dates) {
+      const times = byDate[iso] || [];
+      const tr = document.createElement('tr');
+      const hasDanger = times.some((t) => t.warnings.includes('creneau-impossible'));
+      const hasWarn = times.some((t) => t.warnings.includes('ecart-hors-tolerance') || t.warnings.includes('nuit'));
+      if (hasDanger) tr.className = 'status-danger';
+      else if (hasWarn) tr.className = 'status-warn';
+
+      const dayCell = document.createElement('td');
+      dayCell.textContent = formatShortDate(iso);
+      tr.appendChild(dayCell);
+
+      for (let i = 0; i < 2; i++) {
+        const t = times[i];
+        const td = document.createElement('td');
+        td.className = 'time-cell';
+        if (t) {
+          let note = '';
+          if (t.warnings.includes('creneau-impossible')) note = 'impossible';
+          else if (t.warnings.includes('nuit')) note = 'nuit';
+          td.innerHTML = `${t.time}${note ? `<span class="cell-note">${note}</span>` : ''}`;
+        } else {
+          td.textContent = '—';
+        }
+        tr.appendChild(td);
+      }
+      summaryTableBody.appendChild(tr);
+    }
+    if (dates.length) {
+      printRangeEl.textContent = `Du ${formatDayTitle(dates[0])} au ${formatDayTitle(dates[dates.length - 1])}`;
+    }
+  }
+
+  const summaryToggle = document.getElementById('summaryToggle');
+  const summaryBody = document.getElementById('summaryBody');
+  summaryToggle.addEventListener('click', () => {
+    const expanded = summaryToggle.getAttribute('aria-expanded') === 'true';
+    summaryToggle.setAttribute('aria-expanded', String(!expanded));
+    summaryBody.hidden = expanded;
+  });
+  document.getElementById('printBtn').addEventListener('click', () => window.print());
 
   function renderAbsenceRow(container, iso, absence) {
     const node = absenceTemplate.content.firstElementChild.cloneNode(true);

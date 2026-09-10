@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<header class="topbar">
+<header class="topbar no-print">
   <div class="topbar-inner">
     <span class="logo">
       <svg class="cat-logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
@@ -31,7 +31,7 @@
 </header>
 
 <main>
-  <section class="card intro">
+  <section class="card intro no-print">
     <h2 class="intro-title">Comment ça marche</h2>
     <ol class="steps">
       <li>Pour chaque jour ci-dessous, appuie sur <strong>+ Absence (travail / rdv)</strong> et indique l'heure de début et de fin où tu n'es pas disponible (ex : 06h30 → 14h30 pour un poste du matin).</li>
@@ -46,7 +46,7 @@
     </div>
   </section>
 
-  <section class="card" id="settingsCard">
+  <section class="card no-print" id="settingsCard">
     <button class="collapsible" id="settingsToggle" type="button" aria-expanded="false">
       ⚙️ Réglages <span class="chev">▾</span>
     </button>
@@ -135,13 +135,38 @@
     </div>
   </section>
 
-  <section class="card strip-card">
+  <section class="card strip-card no-print">
     <div class="daystrip-scroll">
       <div class="daystrip" id="daystrip"></div>
     </div>
   </section>
 
-  <section id="dayDetail"></section>
+  <section id="dayDetail" class="no-print"></section>
+
+  <section class="card">
+    <button class="collapsible no-print" id="summaryToggle" type="button" aria-expanded="false">
+      📋 Vue d'ensemble du mois (pour imprimer / PDF) <span class="chev">▾</span>
+    </button>
+    <div class="collapsible-body" id="summaryBody" hidden>
+      <p class="hint no-print">
+        Tous les horaires calculés sur les 4 prochaines semaines, en un
+        coup d'œil. Le bouton ci-dessous ouvre l'impression : choisis
+        <strong>Enregistrer au format PDF</strong> comme imprimante pour
+        en garder une copie ou l'imprimer.
+      </p>
+      <button class="btn secondary no-print" id="printBtn" type="button">Imprimer / Enregistrer en PDF</button>
+      <div class="print-only print-title">
+        <h2>PlanifiCat — Horaires d'injection</h2>
+        <p id="printRange"></p>
+      </div>
+      <div class="summary-table-wrap">
+        <table class="summary-table">
+          <thead><tr><th>Jour</th><th>Injection 1</th><th>Injection 2</th></tr></thead>
+          <tbody id="summaryTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 </main>
 
 <template id="chipTemplate">
