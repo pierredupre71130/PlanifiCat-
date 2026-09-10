@@ -4,6 +4,11 @@
   const STORAGE_KEY = 'planificat-data-v1';
   const DAY_MS = 86400000;
 
+  // À incrémenter à chaque déploiement (voir l'enregistrement du service
+  // worker plus bas) : force une URL différente pour service-worker.js à
+  // chaque version, pour éviter qu'il reste bloqué en cache.
+  const APP_VERSION = '5';
+
   // Toutes les dates sont manipulées en UTC pur (Date.UTC / getUTCDate...)
   // pour éviter tout décalage lié au fuseau horaire local : mélanger une
   // lecture locale (ex: new Date().toISOString()) avec une écriture UTC
@@ -1146,7 +1151,24 @@
   // technique. Le drapeau `refreshed` évite une boucle de rechargement.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('service-worker.js').catch(() => {});
+      // ?v=APP_VERSION (à incrémenter à chaque déploiement) : une URL
+      // différente à chaque version garantit un vrai cache-miss réseau
+      // pour service-worker.js, même si GitHub Pages ou le navigateur
+      // gardent l'ancienne réponse en cache plus longtemps que prévu pour
+      // l'URL sans paramètre.
+      navigator.serviceWorker
+        .register(`service-worker.js?v=${APP_VERSION}`)
+        .then((reg) => {
+          reg.update();
+          // Revérifie aussi à chaque fois que l'app repasse au premier
+          // plan (elle était fermée/en arrière-plan), plutôt que de
+          // compter uniquement sur le rythme de vérification interne du
+          // navigateur.
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') reg.update();
+          });
+        })
+        .catch(() => {});
     });
     let refreshed = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
