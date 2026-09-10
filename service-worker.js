@@ -1,4 +1,4 @@
-const CACHE_NAME = 'planificat-v2';
+const CACHE_NAME = 'planificat-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -24,10 +24,15 @@ self.addEventListener('activate', (event) => {
 // Réseau en priorité : sert toujours la dernière version tant qu'il y a du
 // réseau, et ne se rabat sur le cache que hors-ligne (sinon une ancienne
 // version reste servie indéfiniment après chaque mise à jour de l'app).
+// cache: 'no-store' est indispensable ici : sans ça, fetch() peut renvoyer
+// une réponse prise dans le cache HTTP normal du navigateur (GitHub Pages
+// envoie des en-têtes de cache sur ses fichiers) au lieu d'aller vraiment
+// sur le réseau, et l'app resterait bloquée sur une ancienne version.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  const freshRequest = new Request(event.request, { cache: 'no-store' });
   event.respondWith(
-    fetch(event.request)
+    fetch(freshRequest)
       .then((response) => {
         if (response.ok) {
           const clone = response.clone();
