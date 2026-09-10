@@ -162,12 +162,32 @@
   function refreshTracking() {
     renderSummaryTable();
     renderGlucoseChart();
+    renderUnitsChart();
+  }
+
+  function parseNumberOrNull(raw) {
+    const value = raw === '' || raw == null ? null : Number(raw);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  // La glycémie accepte aussi "HI"/"LO" : ce que le lecteur affiche quand
+  // le taux dépasse la plage qu'il sait mesurer (trop haut ou trop bas).
+  function parseGlucoseValue(raw) {
+    const trimmed = (raw || '').trim();
+    if (trimmed === '') return null;
+    const upper = trimmed.toUpperCase();
+    if (upper === 'HI' || upper === 'LO') return upper;
+    const num = Number(trimmed.replace(',', '.'));
+    return Number.isFinite(num) ? num : null;
+  }
+
+  function formatGlucose(value) {
+    return typeof value === 'string' ? value : `${value} g/L`;
   }
 
   function setReading(iso, slotIndex, field, rawValue) {
     const day = getDayData(iso);
-    const value = rawValue === '' ? null : Number(rawValue);
-    day.readings[slotIndex][field] = Number.isFinite(value) ? value : null;
+    day.readings[slotIndex][field] = field === 'glucose' ? parseGlucoseValue(rawValue) : parseNumberOrNull(rawValue);
     saveState();
     refreshTracking();
   }
@@ -198,6 +218,7 @@
     renderDetailResults();
     renderSummaryTable();
     renderGlucoseChart();
+    renderUnitsChart();
   }
 
   function scheduleByDate() {
@@ -255,11 +276,10 @@
       readingRow.className = 'reading-inputs';
 
       const glucoseInput = document.createElement('input');
-      glucoseInput.type = 'number';
-      glucoseInput.step = '0.01';
-      glucoseInput.min = '0';
-      glucoseInput.placeholder = 'g/L';
-      glucoseInput.title = 'Glycémie (g/L)';
+      glucoseInput.type = 'text';
+      glucoseInput.inputMode = 'decimal';
+      glucoseInput.placeholder = 'g/L ou HI';
+      glucoseInput.title = 'Glycémie (g/L, ou HI/LO si hors plage du lecteur)';
       glucoseInput.value = reading.glucose ?? '';
       glucoseInput.addEventListener('change', () => setReading(selectedDate, idx, 'glucose', glucoseInput.value));
 
@@ -320,7 +340,7 @@
           else if (t.warnings.includes('nuit')) notes.push('nuit');
           if (t.warnings.includes('manuel')) notes.push('manuel');
           const reading = day.readings[i] || {};
-          if (reading.glucose != null) notes.push(`${reading.glucose} g/L`);
+          if (reading.glucose != null) notes.push(formatGlucose(reading.glucose));
           if (reading.units != null) notes.push(`${reading.units} U`);
           const noteHtml = notes.length ? `<span class="cell-note">${notes.join(' · ')}</span>` : '';
           td.innerHTML = `${t.time}${noteHtml}`;
@@ -334,7 +354,7 @@
       extraCell.className = 'notes-cell';
       const extraWithValues = day.extraChecks.filter((c) => c.time && c.glucose != null);
       extraCell.textContent = extraWithValues.length
-        ? extraWithValues.map((c) => `${c.time} : ${c.glucose} g/L`).join(', ')
+        ? extraWithValues.map((c) => `${c.time} : ${formatGlucose(c.glucose)}`).join(', ')
         : '';
       tr.appendChild(extraCell);
 
@@ -390,9 +410,12 @@
     glucoseChartEl.removeAttribute('hidden');
     chartEmptyHint.setAttribute('hidden', '');
 
-    const values = points.map((p) => p.value);
-    let min = Math.min(...values);
-    let max = Math.max(...values);
+    // HI/LO (glycémie hors plage mesurable par le lecteur) n'ont pas de
+    // valeur numérique : ignorés pour calculer l'échelle, mais toujours
+    // affichés, épinglés en haut/bas du graphique.
+    const numericValues = points.map((p) => p.value).filter((v) => typeof v === 'number');
+    let min = numericValues.length ? Math.min(...numericValues) : 0.7;
+    let max = numericValues.length ? Math.max(...numericValues) : 1.4;
     if (min === max) {
       min -= 0.3;
       max += 0.3;
@@ -412,6 +435,8 @@
 
     const xFor = (i) => marginLeft + i * spacing;
     const yFor = (v) => marginTop + plotHeight - ((v - min) / (max - min)) * plotHeight;
+    // HI épinglé tout en haut, LO tout en bas : hors échelle par nature.
+    const yForPoint = (p) => (p.value === 'HI' ? marginTop : p.value === 'LO' ? marginTop + plotHeight : yFor(p.value));
 
     const svgNS = 'http://www.w3.org/2000/svg';
     glucoseChartEl.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -438,14 +463,15 @@
 
     const polyline = document.createElementNS(svgNS, 'polyline');
     polyline.setAttribute('class', 'glucose-line');
-    polyline.setAttribute('points', points.map((p, i) => `${xFor(i)},${yFor(p.value)}`).join(' '));
+    polyline.setAttribute('points', points.map((p, i) => `${xFor(i)},${yForPoint(p)}`).join(' '));
     glucoseChartEl.appendChild(polyline);
 
     points.forEach((p, i) => {
       const x = xFor(i);
-      const y = yFor(p.value);
+      const y = yForPoint(p);
+      const isFlag = typeof p.value === 'string';
       const g = document.createElementNS(svgNS, 'g');
-      g.setAttribute('class', 'glucose-point' + (p.isExtra ? ' extra' : ''));
+      g.setAttribute('class', 'glucose-point' + (p.isExtra ? ' extra' : '') + (isFlag ? ' flag' : ''));
 
       const circle = document.createElementNS(svgNS, 'circle');
       circle.setAttribute('cx', x);
@@ -480,6 +506,99 @@
       g.appendChild(dayLabel);
 
       glucoseChartEl.appendChild(g);
+    });
+  }
+
+  // --- Unités d'insuline injectées ---
+  // Suivi séparé de la glycémie : les unités doivent rester visibles même
+  // un jour où aucune glycémie n'a été renseignée pour ce créneau.
+  const unitsChartEl = document.getElementById('unitsChart');
+  const unitsChartEmptyHint = document.getElementById('unitsChartEmptyHint');
+
+  function collectUnitsPoints() {
+    const byDate = scheduleByDate();
+    const points = [];
+    listDates().forEach((iso, dayIdx) => {
+      const day = getDayData(iso);
+      const times = byDate[iso] || [];
+      times.forEach((t, i) => {
+        const reading = day.readings[i];
+        if (reading && reading.units != null) {
+          points.push({ iso, dayIdx, minutes: t.minutes, value: reading.units });
+        }
+      });
+    });
+    points.sort((a, b) => a.dayIdx - b.dayIdx || a.minutes - b.minutes);
+    return points;
+  }
+
+  function renderUnitsChart() {
+    const points = collectUnitsPoints();
+    unitsChartEl.innerHTML = '';
+    if (points.length === 0) {
+      unitsChartEl.setAttribute('hidden', '');
+      unitsChartEmptyHint.removeAttribute('hidden');
+      return;
+    }
+    unitsChartEl.removeAttribute('hidden');
+    unitsChartEmptyHint.setAttribute('hidden', '');
+
+    const top = Math.max(...points.map((p) => p.value)) * 1.25 || 1;
+
+    const spacing = 55;
+    const marginLeft = 30;
+    const marginRight = 16;
+    const marginTop = 22;
+    const marginBottom = 26;
+    const height = 160;
+    const plotHeight = height - marginTop - marginBottom;
+    const width = Math.max(320, marginLeft + marginRight + points.length * spacing);
+    const barWidth = 22;
+
+    const xFor = (i) => marginLeft + i * spacing;
+    const yForVal = (v) => marginTop + plotHeight - (v / top) * plotHeight;
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    unitsChartEl.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    unitsChartEl.setAttribute('width', width);
+    unitsChartEl.setAttribute('height', height);
+
+    const baseline = document.createElementNS(svgNS, 'line');
+    baseline.setAttribute('x1', marginLeft - 6);
+    baseline.setAttribute('x2', width - marginRight);
+    baseline.setAttribute('y1', marginTop + plotHeight);
+    baseline.setAttribute('y2', marginTop + plotHeight);
+    baseline.setAttribute('class', 'axis-line');
+    unitsChartEl.appendChild(baseline);
+
+    points.forEach((p, i) => {
+      const x = xFor(i);
+      const barTop = yForVal(p.value);
+
+      const rect = document.createElementNS(svgNS, 'rect');
+      rect.setAttribute('x', x - barWidth / 2);
+      rect.setAttribute('y', barTop);
+      rect.setAttribute('width', barWidth);
+      rect.setAttribute('height', marginTop + plotHeight - barTop);
+      rect.setAttribute('rx', 4);
+      rect.setAttribute('class', 'units-bar');
+      unitsChartEl.appendChild(rect);
+
+      const valueLabel = document.createElementNS(svgNS, 'text');
+      valueLabel.setAttribute('x', x);
+      valueLabel.setAttribute('y', barTop - 6);
+      valueLabel.setAttribute('text-anchor', 'middle');
+      valueLabel.setAttribute('class', 'glucose-value');
+      valueLabel.textContent = `${p.value} U`;
+      unitsChartEl.appendChild(valueLabel);
+
+      const dayLabel = document.createElementNS(svgNS, 'text');
+      dayLabel.setAttribute('x', x);
+      dayLabel.setAttribute('y', height - 6);
+      dayLabel.setAttribute('text-anchor', 'middle');
+      dayLabel.setAttribute('class', 'day-label');
+      dayLabel.textContent = formatShortDate(p.iso).replace(/^\S+\s/, '');
+      unitsChartEl.appendChild(dayLabel);
     });
   }
 
@@ -549,8 +668,7 @@
       refreshTracking();
     });
     glucoseInput.addEventListener('change', () => {
-      const value = glucoseInput.value === '' ? null : Number(glucoseInput.value);
-      check.glucose = Number.isFinite(value) ? value : null;
+      check.glucose = parseGlucoseValue(glucoseInput.value);
       saveState();
       refreshTracking();
     });
