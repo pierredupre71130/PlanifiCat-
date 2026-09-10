@@ -447,11 +447,12 @@
           const reading = day.readings[i] || {};
           if (reading.glucose != null) notes.push(formatGlucose(reading.glucose));
           if (reading.units != null) notes.push(`${reading.units} U`);
+          // "manuel" n'apparaît plus ici du tout (ni écran ni impression) :
+          // encombrant dans ce tableau récapitulatif. Reste visible dans le
+          // panneau du jour, où c'est utile de savoir qu'on édite un
+          // horaire fixé à la main.
           const noteHtml = notes.length ? `<span class="cell-note">${notes.join(' · ')}</span>` : '';
-          // "manuel" reste visible à l'écran (utile en travaillant), mais
-          // pas à l'impression : l'info n'y a pas d'utilité pour elle.
-          const manualHtml = t.warnings.includes('manuel') ? '<span class="cell-note no-print"> · manuel</span>' : '';
-          td.innerHTML = `${t.time}${noteHtml}${manualHtml}`;
+          td.innerHTML = `${t.time}${noteHtml}`;
         } else {
           td.textContent = '—';
         }
