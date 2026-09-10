@@ -267,8 +267,8 @@ main {
 .results {
   margin-top: 0.8rem;
   display: flex;
+  flex-direction: column;
   gap: 0.6rem;
-  flex-wrap: wrap;
 }
 
 .extra-checks { margin-top: 0.8rem; }
@@ -291,34 +291,23 @@ main {
 .extra-check-row input[type="number"] { width: 5rem; }
 .add-extra-check { margin-top: 0.8rem; }
 
-.reading-inputs {
-  display: flex;
-  gap: 0.35rem;
-  margin-top: 0.4rem;
-}
-.reading-inputs input {
-  width: 4rem;
-  padding: 0.3rem 0.35rem;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--card-bg);
-  color: var(--text);
-  font-size: 0.78rem;
-  text-align: center;
-}
-
 .result-chip {
   background: var(--ok-bg);
   color: var(--ok);
   border-radius: 10px;
-  padding: 0.5rem 0.7rem;
+  padding: 0.6rem 0.8rem;
   font-size: 0.9rem;
   font-weight: 600;
-  flex: 1 1 130px;
-  text-align: center;
   display: flex;
   flex-direction: column;
+  gap: 0.55rem;
+}
+.chip-time-row {
+  display: flex;
   align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
 }
 .chip-emoji { font-size: 1rem; }
 .result-time-input {
@@ -332,17 +321,18 @@ main {
   width: auto;
 }
 .result-chip .gap {
-  display: block;
+  flex-basis: 100%;
+  text-align: center;
   font-weight: 400;
   font-size: 0.78rem;
   opacity: 0.85;
-  margin-top: 0.15rem;
 }
 .result-chip.warn { background: var(--warn-bg); color: var(--warn); }
 .result-chip.danger { background: var(--danger-bg); color: var(--danger); }
 .result-chip.manual { box-shadow: inset 0 0 0 2px var(--accent); }
 .reset-override {
-  margin-top: 0.3rem;
+  flex-basis: 100%;
+  text-align: center;
   border: none;
   background: transparent;
   color: inherit;
@@ -350,6 +340,55 @@ main {
   font-size: 0.75rem;
   padding: 0;
   cursor: pointer;
+}
+
+.reading-inputs {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  border-top: 1px solid var(--border);
+  padding-top: 0.55rem;
+}
+.reading-field {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+.reading-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.75;
+}
+.glucose-control { display: flex; align-items: center; gap: 0.3rem; }
+.reading-inputs input {
+  width: 4.2rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+}
+.flag-btn {
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-muted);
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+}
+.flag-btn.active {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
 }
 
 @media (max-width: 420px) {

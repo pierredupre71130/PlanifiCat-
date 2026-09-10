@@ -160,6 +160,7 @@
   // Glycémie/unités ne changent pas les horaires calculés : pas besoin de
   // relancer le calcul (recompute), juste de rafraîchir ce qui les affiche.
   function refreshTracking() {
+    renderDetailResults(); // pour l'état actif (pressé) des boutons HI/LO
     renderSummaryTable();
     renderGlucoseChart();
     renderUnitsChart();
@@ -253,6 +254,9 @@
       else if (t.warnings.includes('nuit')) noteText += ' · horaire de nuit';
       if (isManual) noteText += ' · fixé manuellement';
 
+      const timeRow = document.createElement('div');
+      timeRow.className = 'chip-time-row';
+
       const label = document.createElement('span');
       label.className = 'chip-emoji';
       label.textContent = '💉';
@@ -267,34 +271,9 @@
       gapSpan.className = 'gap';
       gapSpan.textContent = noteText;
 
-      chip.appendChild(label);
-      chip.appendChild(input);
-      chip.appendChild(gapSpan);
-
-      const reading = getDayData(selectedDate).readings[idx] || { glucose: null, units: null };
-      const readingRow = document.createElement('div');
-      readingRow.className = 'reading-inputs';
-
-      const glucoseInput = document.createElement('input');
-      glucoseInput.type = 'text';
-      glucoseInput.inputMode = 'decimal';
-      glucoseInput.placeholder = 'g/L ou HI';
-      glucoseInput.title = 'Glycémie (g/L, ou HI/LO si hors plage du lecteur)';
-      glucoseInput.value = reading.glucose ?? '';
-      glucoseInput.addEventListener('change', () => setReading(selectedDate, idx, 'glucose', glucoseInput.value));
-
-      const unitsInput = document.createElement('input');
-      unitsInput.type = 'number';
-      unitsInput.step = '0.5';
-      unitsInput.min = '0';
-      unitsInput.placeholder = 'U';
-      unitsInput.title = "Nombre d'unités injectées";
-      unitsInput.value = reading.units ?? '';
-      unitsInput.addEventListener('change', () => setReading(selectedDate, idx, 'units', unitsInput.value));
-
-      readingRow.appendChild(glucoseInput);
-      readingRow.appendChild(unitsInput);
-      chip.appendChild(readingRow);
+      timeRow.appendChild(label);
+      timeRow.appendChild(input);
+      timeRow.appendChild(gapSpan);
 
       if (isManual) {
         const resetBtn = document.createElement('button');
@@ -303,11 +282,80 @@
         resetBtn.title = 'Revenir au calcul automatique';
         resetBtn.textContent = '↺ auto';
         resetBtn.addEventListener('click', () => setOverride(selectedDate, idx, null));
-        chip.appendChild(resetBtn);
+        timeRow.appendChild(resetBtn);
       }
 
+      chip.appendChild(timeRow);
+      chip.appendChild(buildReadingRow(selectedDate, idx));
       resultsEl.appendChild(chip);
     });
+  }
+
+  // Ligne "Glycémie / Unités" sous un horaire : la glycémie se saisit soit
+  // au clavier numérique, soit via les boutons HI/LO (le clavier numérique
+  // du téléphone ne permet pas de taper des lettres).
+  function buildReadingRow(iso, idx) {
+    const reading = getDayData(iso).readings[idx] || { glucose: null, units: null };
+    const row = document.createElement('div');
+    row.className = 'reading-inputs';
+
+    const glucoseField = document.createElement('div');
+    glucoseField.className = 'reading-field';
+    const glucoseLabel = document.createElement('span');
+    glucoseLabel.className = 'reading-label';
+    glucoseLabel.textContent = 'Glycémie';
+    const glucoseControl = document.createElement('div');
+    glucoseControl.className = 'glucose-control';
+
+    const glucoseInput = document.createElement('input');
+    glucoseInput.type = 'number';
+    glucoseInput.step = '0.01';
+    glucoseInput.min = '0';
+    glucoseInput.inputMode = 'decimal';
+    glucoseInput.placeholder = 'g/L';
+    glucoseInput.title = 'Glycémie en g/L';
+    glucoseInput.value = typeof reading.glucose === 'number' ? reading.glucose : '';
+    glucoseInput.addEventListener('change', () => setReading(iso, idx, 'glucose', glucoseInput.value));
+
+    const hiBtn = document.createElement('button');
+    hiBtn.type = 'button';
+    hiBtn.className = 'flag-btn' + (reading.glucose === 'HI' ? ' active' : '');
+    hiBtn.textContent = 'HI';
+    hiBtn.title = 'Glycémie trop haute pour être mesurée par le lecteur';
+    hiBtn.addEventListener('click', () => setReading(iso, idx, 'glucose', reading.glucose === 'HI' ? '' : 'HI'));
+
+    const loBtn = document.createElement('button');
+    loBtn.type = 'button';
+    loBtn.className = 'flag-btn' + (reading.glucose === 'LO' ? ' active' : '');
+    loBtn.textContent = 'LO';
+    loBtn.title = 'Glycémie trop basse pour être mesurée par le lecteur';
+    loBtn.addEventListener('click', () => setReading(iso, idx, 'glucose', reading.glucose === 'LO' ? '' : 'LO'));
+
+    glucoseControl.appendChild(glucoseInput);
+    glucoseControl.appendChild(hiBtn);
+    glucoseControl.appendChild(loBtn);
+    glucoseField.appendChild(glucoseLabel);
+    glucoseField.appendChild(glucoseControl);
+
+    const unitsField = document.createElement('div');
+    unitsField.className = 'reading-field';
+    const unitsLabel = document.createElement('span');
+    unitsLabel.className = 'reading-label';
+    unitsLabel.textContent = 'Unités';
+    const unitsInput = document.createElement('input');
+    unitsInput.type = 'number';
+    unitsInput.step = '0.5';
+    unitsInput.min = '0';
+    unitsInput.placeholder = 'U';
+    unitsInput.title = "Nombre d'unités injectées";
+    unitsInput.value = reading.units ?? '';
+    unitsInput.addEventListener('change', () => setReading(iso, idx, 'units', unitsInput.value));
+    unitsField.appendChild(unitsLabel);
+    unitsField.appendChild(unitsInput);
+
+    row.appendChild(glucoseField);
+    row.appendChild(unitsField);
+    return row;
   }
 
   const summaryTableBody = document.getElementById('summaryTableBody');
@@ -657,10 +705,20 @@
     const node = extraCheckTemplate.content.firstElementChild.cloneNode(true);
     const timeInput = node.querySelector('.extra-check-time');
     const glucoseInput = node.querySelector('.extra-check-glucose');
+    const hiBtn = node.querySelector('.extra-check-hi');
+    const loBtn = node.querySelector('.extra-check-lo');
     const removeBtn = node.querySelector('.remove-extra-check');
 
+    // Cette ligne n'est pas reconstruite par refreshTracking() (seul le
+    // panneau des injections l'est) : on met à jour son propre affichage
+    // localement au lieu de compter sur un re-rendu externe.
+    function syncGlucoseUI() {
+      glucoseInput.value = typeof check.glucose === 'number' ? check.glucose : '';
+      hiBtn.classList.toggle('active', check.glucose === 'HI');
+      loBtn.classList.toggle('active', check.glucose === 'LO');
+    }
+    syncGlucoseUI();
     timeInput.value = check.time || '';
-    glucoseInput.value = check.glucose ?? '';
 
     timeInput.addEventListener('change', () => {
       check.time = timeInput.value;
@@ -669,6 +727,19 @@
     });
     glucoseInput.addEventListener('change', () => {
       check.glucose = parseGlucoseValue(glucoseInput.value);
+      syncGlucoseUI();
+      saveState();
+      refreshTracking();
+    });
+    hiBtn.addEventListener('click', () => {
+      check.glucose = check.glucose === 'HI' ? null : 'HI';
+      syncGlucoseUI();
+      saveState();
+      refreshTracking();
+    });
+    loBtn.addEventListener('click', () => {
+      check.glucose = check.glucose === 'LO' ? null : 'LO';
+      syncGlucoseUI();
       saveState();
       refreshTracking();
     });
