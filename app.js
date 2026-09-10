@@ -34,6 +34,9 @@
         defaultTime: '06:25',
         anchorEnabled: false,
         anchor: { date: todayISO(), time: '06:25' },
+        avoidNightEnabled: true,
+        avoidNightStart: '23:00',
+        avoidNightEnd: '05:00',
       },
       days: {}, // 'YYYY-MM-DD' -> { absences: [{id,label,start,end}] }
       sync: {
@@ -138,6 +141,10 @@
     if (s.anchorEnabled && s.anchor && s.anchor.time) {
       settings.anchor = { date: s.anchor.date, time: s.anchor.time };
     }
+    if (s.avoidNightEnabled && s.avoidNightStart && s.avoidNightEnd) {
+      settings.avoidNightStart = s.avoidNightStart;
+      settings.avoidNightEnd = s.avoidNightEnd;
+    }
     return settings;
   }
 
@@ -166,10 +173,12 @@
       const chip = document.createElement('div');
       let cls = 'result-chip';
       if (t.warnings.includes('creneau-impossible')) cls += ' danger';
-      else if (t.warnings.includes('ecart-hors-tolerance')) cls += ' warn';
+      else if (t.warnings.includes('ecart-hors-tolerance') || t.warnings.includes('nuit')) cls += ' warn';
       chip.className = cls;
       const gapText = t.gapFromPrevLabel ? `écart ${t.gapFromPrevLabel}` : '';
-      const warnText = t.warnings.includes('creneau-impossible') ? ' · créneau impossible !' : '';
+      let warnText = '';
+      if (t.warnings.includes('creneau-impossible')) warnText = ' · créneau impossible !';
+      else if (t.warnings.includes('nuit')) warnText = ' · horaire de nuit';
       chip.innerHTML = `💉 ${t.time}<span class="gap">${gapText}${warnText}</span>`;
       resultsEl.appendChild(chip);
     }
@@ -254,7 +263,7 @@
       chip.classList.remove('status-ok', 'status-warn', 'status-danger');
       const times = byDate[iso] || [];
       if (times.some((t) => t.warnings.includes('creneau-impossible'))) chip.classList.add('status-danger');
-      else if (times.some((t) => t.warnings.includes('ecart-hors-tolerance'))) chip.classList.add('status-warn');
+      else if (times.some((t) => t.warnings.includes('ecart-hors-tolerance') || t.warnings.includes('nuit'))) chip.classList.add('status-warn');
       else if (times.length) chip.classList.add('status-ok');
       const hasAbsence = getDayData(iso).absences.some((a) => a.start && a.end);
       chip.classList.toggle('has-absence', hasAbsence);
@@ -297,6 +306,10 @@
   const anchorInputs = document.getElementById('anchorInputs');
   const anchorDate = document.getElementById('anchorDate');
   const anchorTime = document.getElementById('anchorTime');
+  const avoidNightEnabled = document.getElementById('avoidNightEnabled');
+  const avoidNightInputs = document.getElementById('avoidNightInputs');
+  const avoidNightStart = document.getElementById('avoidNightStart');
+  const avoidNightEnd = document.getElementById('avoidNightEnd');
 
   function syncSettingsUI() {
     toleranceInput.value = state.settings.tolerance;
@@ -306,6 +319,10 @@
     anchorInputs.hidden = !state.settings.anchorEnabled;
     anchorDate.value = state.settings.anchor.date;
     anchorTime.value = state.settings.anchor.time;
+    avoidNightEnabled.checked = !!state.settings.avoidNightEnabled;
+    avoidNightInputs.hidden = !state.settings.avoidNightEnabled;
+    avoidNightStart.value = state.settings.avoidNightStart;
+    avoidNightEnd.value = state.settings.avoidNightEnd;
     document.getElementById('ghOwner').value = state.sync.owner;
     document.getElementById('ghRepo').value = state.sync.repo;
     document.getElementById('ghToken').value = state.sync.token;
@@ -339,6 +356,22 @@
   });
   anchorTime.addEventListener('change', () => {
     state.settings.anchor.time = anchorTime.value;
+    saveState();
+    recompute();
+  });
+  avoidNightEnabled.addEventListener('change', () => {
+    state.settings.avoidNightEnabled = avoidNightEnabled.checked;
+    avoidNightInputs.hidden = !avoidNightEnabled.checked;
+    saveState();
+    recompute();
+  });
+  avoidNightStart.addEventListener('change', () => {
+    state.settings.avoidNightStart = avoidNightStart.value;
+    saveState();
+    recompute();
+  });
+  avoidNightEnd.addEventListener('change', () => {
+    state.settings.avoidNightEnd = avoidNightEnd.value;
     saveState();
     recompute();
   });

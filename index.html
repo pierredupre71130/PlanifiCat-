@@ -41,7 +41,7 @@
     </ol>
     <div class="legend">
       <span class="legend-item"><svg class="paw-icon dot ok" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>horaire ok</span>
-      <span class="legend-item"><svg class="paw-icon dot warn" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>écart un peu hors tolérance</span>
+      <span class="legend-item"><svg class="paw-icon dot warn" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>écart hors tolérance ou horaire de nuit</span>
       <span class="legend-item"><svg class="paw-icon dot danger" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>aucun horaire possible ce jour</span>
     </div>
   </section>
@@ -77,6 +77,17 @@
         <div class="anchor-inputs" id="anchorInputs" hidden>
           <input type="date" id="anchorDate" />
           <input type="time" id="anchorTime" />
+        </div>
+      </div>
+      <div class="field-row anchor-row">
+        <label class="checkbox-label">
+          <input type="checkbox" id="avoidNightEnabled" />
+          Éviter les horaires de nuit si possible
+        </label>
+        <div class="anchor-inputs" id="avoidNightInputs" hidden>
+          <input type="time" id="avoidNightStart" />
+          <span>→</span>
+          <input type="time" id="avoidNightEnd" />
         </div>
       </div>
       <div class="field-row buttons-row">

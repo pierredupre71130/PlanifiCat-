@@ -11,6 +11,11 @@ const DAY_MIN = 1440;
 const GRID = 5; // résolution en minutes
 const INFEASIBLE_PENALTY = 1e8; // horaire tombant dans une absence
 const TOLERANCE_PENALTY = 1e5; // écart hors de la tolérance autorisée
+// Préférence (pas une contrainte dure comme les 2 ci-dessus) : évite les
+// horaires de nuit quand une solution respectant l'absence ET la
+// tolérance existe ailleurs, mais ne sacrifie jamais ces 2 contraintes
+// pour l'éviter.
+const NIGHT_PENALTY = 1e4;
 
 function parseHM(hm) {
   const [h, m] = hm.split(':').map(Number);
@@ -46,6 +51,13 @@ function isFeasible(t, blocked) {
   return !blocked.some(([s, e]) => t >= s && t <= e);
 }
 
+// Fenêtre pouvant chevaucher minuit (ex: 23h -> 5h du matin).
+function isInWindow(t, start, end) {
+  if (start === end) return false;
+  if (start < end) return t >= start && t < end;
+  return t >= start || t < end;
+}
+
 /**
  * @param {Array<{date:string, absences:Array<{start:string,end:string,label?:string}>}>} days
  *   Jours triés chronologiquement, dates au format 'YYYY-MM-DD'.
@@ -54,7 +66,9 @@ function isFeasible(t, blocked) {
  *   tolerance?: number,      // tolérance +/- en minutes (défaut 60 => 11h-13h)
  *   marginMin?: number,      // marge de sécurité autour des absences (défaut 5 min)
  *   defaultTime?: string,    // heure de référence si aucune ancre n'est fournie
- *   anchor?: {date:string, time:string} | null // dernière injection connue avant days[0]
+ *   anchor?: {date:string, time:string} | null, // dernière injection connue avant days[0]
+ *   avoidNightStart?: string, // début de la plage nuit à éviter si possible (ex: '23:00')
+ *   avoidNightEnd?: string,   // fin de cette plage (ex: '05:00') ; ignoré si égal au début
  * }} settings
  */
 function computeSchedule(days, settings = {}) {
@@ -65,6 +79,12 @@ function computeSchedule(days, settings = {}) {
   const margin = settings.marginMin ?? 5;
   const baseDate = days[0].date;
   const defaultT = parseHM(settings.defaultTime || '06:00');
+  const nightStart = settings.avoidNightStart ? parseHM(settings.avoidNightStart) : null;
+  const nightEnd = settings.avoidNightEnd ? parseHM(settings.avoidNightEnd) : null;
+  const hasNightWindow = nightStart !== null && nightEnd !== null && nightStart !== nightEnd;
+  function nightPenaltyFor(t) {
+    return hasNightWindow && isInWindow(t, nightStart, nightEnd) ? NIGHT_PENALTY : 0;
+  }
 
   const grid = [];
   for (let t = 0; t < DAY_MIN; t += GRID) grid.push(t);
@@ -91,14 +111,16 @@ function computeSchedule(days, settings = {}) {
       const absT = slot.dayIdx * DAY_MIN + t;
       const feasPenalty = isFeasible(t, slot.blocked) ? 0 : INFEASIBLE_PENALTY;
 
+      const nightPenalty = nightPenaltyFor(t);
+
       if (i === 0) {
         let cost;
         if (anchorAbs !== null) {
           const gap = absT - anchorAbs;
           const tolPenalty = gap < target - tol || gap > target + tol ? TOLERANCE_PENALTY : 0;
-          cost = Math.pow(gap - target, 2) + tolPenalty + feasPenalty;
+          cost = Math.pow(gap - target, 2) + tolPenalty + feasPenalty + nightPenalty;
         } else {
-          cost = Math.pow(t - defaultT, 2) * 0.001 + feasPenalty;
+          cost = Math.pow(t - defaultT, 2) * 0.001 + feasPenalty + nightPenalty;
         }
         layer.set(t, { cost, prevT: null });
       } else {
@@ -107,7 +129,7 @@ function computeSchedule(days, settings = {}) {
           const absTp = slots[i - 1].dayIdx * DAY_MIN + tp;
           const gap = absT - absTp;
           const tolPenalty = gap < target - tol || gap > target + tol ? TOLERANCE_PENALTY : 0;
-          const cost = node.cost + Math.pow(gap - target, 2) + tolPenalty + feasPenalty;
+          const cost = node.cost + Math.pow(gap - target, 2) + tolPenalty + feasPenalty + nightPenalty;
           if (!best || cost < best.cost) best = { cost, prevT: tp };
         }
         layer.set(t, best);
@@ -139,6 +161,7 @@ function computeSchedule(days, settings = {}) {
     const t = path[i];
     const warnings = [];
     if (!isFeasible(t, slot.blocked)) warnings.push('creneau-impossible');
+    if (hasNightWindow && isInWindow(t, nightStart, nightEnd)) warnings.push('nuit');
 
     let gapFromPrev = null;
     if (i > 0) {
