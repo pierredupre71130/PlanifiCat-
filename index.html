@@ -32,7 +32,10 @@
 
 <main>
   <section class="card intro no-print">
-    <h2 class="intro-title">Comment ça marche</h2>
+    <button class="collapsible" id="introToggle" type="button" aria-expanded="false">
+      ❓ Comment ça marche <span class="chev">▾</span>
+    </button>
+    <div class="collapsible-body" id="introBody" hidden>
     <ol class="steps">
       <li>Pour chaque jour ci-dessous, appuie sur <strong>+ Absence (travail / rdv)</strong> et indique l'heure de début et de fin où tu n'es pas disponible (ex : 06h30 → 14h30 pour un poste du matin).</li>
       <li>Les 2 horaires d'injection 💉 s'affichent automatiquement en dessous, calculés pour rester autour de 12h d'écart.</li>
@@ -45,6 +48,7 @@
       <span class="legend-item"><svg class="paw-icon dot ok" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>horaire ok</span>
       <span class="legend-item"><svg class="paw-icon dot warn" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>écart hors tolérance ou horaire de nuit</span>
       <span class="legend-item"><svg class="paw-icon dot danger" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>aucun horaire possible ce jour</span>
+    </div>
     </div>
   </section>
 

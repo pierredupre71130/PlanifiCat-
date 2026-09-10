@@ -283,13 +283,17 @@
     }
   }
 
-  const summaryToggle = document.getElementById('summaryToggle');
-  const summaryBody = document.getElementById('summaryBody');
-  summaryToggle.addEventListener('click', () => {
-    const expanded = summaryToggle.getAttribute('aria-expanded') === 'true';
-    summaryToggle.setAttribute('aria-expanded', String(!expanded));
-    summaryBody.hidden = expanded;
-  });
+  function bindCollapsible(toggleId, bodyId) {
+    const toggle = document.getElementById(toggleId);
+    const body = document.getElementById(bodyId);
+    toggle.addEventListener('click', () => {
+      const expanded = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', String(!expanded));
+      body.hidden = expanded;
+    });
+  }
+  bindCollapsible('introToggle', 'introBody');
+  bindCollapsible('summaryToggle', 'summaryBody');
   document.getElementById('printBtn').addEventListener('click', () => window.print());
 
   function renderAbsenceRow(container, iso, absence) {
@@ -400,13 +404,7 @@
   }
 
   // --- Réglages ---
-  const settingsToggle = document.getElementById('settingsToggle');
-  const settingsBody = document.getElementById('settingsBody');
-  settingsToggle.addEventListener('click', () => {
-    const expanded = settingsToggle.getAttribute('aria-expanded') === 'true';
-    settingsToggle.setAttribute('aria-expanded', String(!expanded));
-    settingsBody.hidden = expanded;
-  });
+  bindCollapsible('settingsToggle', 'settingsBody');
 
   const toleranceInput = document.getElementById('toleranceInput');
   const marginInput = document.getElementById('marginInput');
