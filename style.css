@@ -422,20 +422,18 @@ main {
   background: var(--bg);
   border-radius: 10px;
 }
-#glucoseChart, #unitsChart { display: block; height: 200px; }
-#unitsChart { height: 160px; }
-#glucoseChart .axis-line, #unitsChart .axis-line { stroke: var(--border); stroke-width: 1; }
-#glucoseChart .axis-label, #unitsChart .axis-label { fill: var(--text-muted); font-size: 10px; }
+#glucoseChart { display: block; height: 200px; }
+#glucoseChart .axis-line { stroke: var(--border); stroke-width: 1; }
+#glucoseChart .axis-label { fill: var(--text-muted); font-size: 10px; }
 #glucoseChart .glucose-line { fill: none; stroke: var(--primary); stroke-width: 2; }
 #glucoseChart .glucose-point circle { fill: var(--primary); }
 #glucoseChart .glucose-point.extra circle { fill: var(--card-bg); stroke: var(--primary); stroke-width: 2; }
 #glucoseChart .glucose-point.flag circle { fill: var(--danger); }
 #glucoseChart .glucose-point.flag.extra circle { fill: var(--card-bg); stroke: var(--danger); }
-#glucoseChart .glucose-value, #unitsChart .glucose-value { fill: var(--text); font-size: 10px; font-weight: 600; }
+#glucoseChart .glucose-value { fill: var(--text); font-size: 10px; font-weight: 600; }
 #glucoseChart .glucose-point.flag .glucose-value { fill: var(--danger); }
 #glucoseChart .glucose-units { fill: var(--accent); font-size: 9px; }
-#glucoseChart .day-label, #unitsChart .day-label { fill: var(--text-muted); font-size: 9px; }
-#unitsChart .units-bar { fill: var(--accent); }
+#glucoseChart .day-label { fill: var(--text-muted); font-size: 9px; }
 
 @media print {
   .no-print { display: none !important; }

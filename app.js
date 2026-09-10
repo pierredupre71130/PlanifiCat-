@@ -39,6 +39,9 @@
         avoidNightEnd: '05:00',
       },
       days: {}, // 'YYYY-MM-DD' -> { absences: [{id,label,start,end}] }
+      // Période affichée/imprimée dans "Vue d'ensemble du mois", distincte
+      // de la fenêtre glissante du bandeau : vide = par défaut (4 semaines).
+      summaryRange: { start: '', end: '' },
       sync: {
         owner: '',
         repo: '',
@@ -60,6 +63,7 @@
         ...base,
         ...parsed,
         settings: { ...base.settings, ...(parsed.settings || {}) },
+        summaryRange: { ...base.summaryRange, ...(parsed.summaryRange || {}) },
         sync: { ...base.sync, ...(parsed.sync || {}) },
       };
     } catch (e) {
@@ -93,6 +97,26 @@
       cur = addDaysISO(cur, 1);
     }
     return dates;
+  }
+
+  function datesBetween(start, end) {
+    const dates = [];
+    let cur = start;
+    let guard = 0;
+    while (cur <= end && guard < 400) {
+      dates.push(cur);
+      cur = addDaysISO(cur, 1);
+      guard++;
+    }
+    return dates;
+  }
+
+  // Période affichée dans la vue d'ensemble / le PDF : la sélection
+  // manuelle si elle est valide, sinon la même fenêtre que le bandeau.
+  function listSummaryDates() {
+    const { start, end } = state.summaryRange || {};
+    if (start && end && start <= end) return datesBetween(start, end);
+    return listDates();
   }
 
   const WEEKDAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
@@ -137,8 +161,15 @@
     return day;
   }
 
+  // Union du bandeau et de la période choisie pour la vue d'ensemble :
+  // celle-ci peut déborder de la fenêtre glissante par défaut (ex: une
+  // période choisie plus longue), le calcul doit alors couvrir les deux.
+  function scheduleWindowDates() {
+    return Array.from(new Set([...listDates(), ...listSummaryDates()])).sort();
+  }
+
   function buildSchedulerInput() {
-    return listDates().map((iso) => {
+    return scheduleWindowDates().map((iso) => {
       const day = getDayData(iso);
       return {
         date: iso,
@@ -163,7 +194,6 @@
     renderDetailResults(); // pour l'état actif (pressé) des boutons HI/LO
     renderSummaryTable();
     renderGlucoseChart();
-    renderUnitsChart();
   }
 
   function parseNumberOrNull(raw) {
@@ -219,7 +249,6 @@
     renderDetailResults();
     renderSummaryTable();
     renderGlucoseChart();
-    renderUnitsChart();
   }
 
   function scheduleByDate() {
@@ -380,7 +409,7 @@
 
   function renderSummaryTable() {
     const byDate = scheduleByDate();
-    const dates = listDates();
+    const dates = listSummaryDates();
     summaryTableBody.innerHTML = '';
     for (const iso of dates) {
       const times = byDate[iso] || [];
@@ -403,12 +432,14 @@
           const notes = [];
           if (t.warnings.includes('creneau-impossible')) notes.push('impossible');
           else if (t.warnings.includes('nuit')) notes.push('nuit');
-          if (t.warnings.includes('manuel')) notes.push('manuel');
           const reading = day.readings[i] || {};
           if (reading.glucose != null) notes.push(formatGlucose(reading.glucose));
           if (reading.units != null) notes.push(`${reading.units} U`);
           const noteHtml = notes.length ? `<span class="cell-note">${notes.join(' · ')}</span>` : '';
-          td.innerHTML = `${t.time}${noteHtml}`;
+          // "manuel" reste visible à l'écran (utile en travaillant), mais
+          // pas à l'impression : l'info n'y a pas d'utilité pour elle.
+          const manualHtml = t.warnings.includes('manuel') ? '<span class="cell-note no-print"> · manuel</span>' : '';
+          td.innerHTML = `${t.time}${noteHtml}${manualHtml}`;
         } else {
           td.textContent = '—';
         }
@@ -442,7 +473,7 @@
   function collectGlucosePoints() {
     const byDate = scheduleByDate();
     const points = [];
-    listDates().forEach((iso, dayIdx) => {
+    listSummaryDates().forEach((iso, dayIdx) => {
       const day = getDayData(iso);
       const times = byDate[iso] || [];
       times.forEach((t, i) => {
@@ -575,98 +606,6 @@
   }
 
   // --- Unités d'insuline injectées ---
-  // Suivi séparé de la glycémie : les unités doivent rester visibles même
-  // un jour où aucune glycémie n'a été renseignée pour ce créneau.
-  const unitsChartEl = document.getElementById('unitsChart');
-  const unitsChartEmptyHint = document.getElementById('unitsChartEmptyHint');
-
-  function collectUnitsPoints() {
-    const byDate = scheduleByDate();
-    const points = [];
-    listDates().forEach((iso, dayIdx) => {
-      const day = getDayData(iso);
-      const times = byDate[iso] || [];
-      times.forEach((t, i) => {
-        const reading = day.readings[i];
-        if (reading && reading.units != null) {
-          points.push({ iso, dayIdx, minutes: t.minutes, value: reading.units });
-        }
-      });
-    });
-    points.sort((a, b) => a.dayIdx - b.dayIdx || a.minutes - b.minutes);
-    return points;
-  }
-
-  function renderUnitsChart() {
-    const points = collectUnitsPoints();
-    unitsChartEl.innerHTML = '';
-    if (points.length === 0) {
-      unitsChartEl.setAttribute('hidden', '');
-      unitsChartEmptyHint.removeAttribute('hidden');
-      return;
-    }
-    unitsChartEl.removeAttribute('hidden');
-    unitsChartEmptyHint.setAttribute('hidden', '');
-
-    const top = Math.max(...points.map((p) => p.value)) * 1.25 || 1;
-
-    const spacing = 55;
-    const marginLeft = 30;
-    const marginRight = 16;
-    const marginTop = 22;
-    const marginBottom = 26;
-    const height = 160;
-    const plotHeight = height - marginTop - marginBottom;
-    const width = Math.max(320, marginLeft + marginRight + points.length * spacing);
-    const barWidth = 22;
-
-    const xFor = (i) => marginLeft + i * spacing;
-    const yForVal = (v) => marginTop + plotHeight - (v / top) * plotHeight;
-
-    const svgNS = 'http://www.w3.org/2000/svg';
-    unitsChartEl.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    unitsChartEl.setAttribute('width', width);
-    unitsChartEl.setAttribute('height', height);
-
-    const baseline = document.createElementNS(svgNS, 'line');
-    baseline.setAttribute('x1', marginLeft - 6);
-    baseline.setAttribute('x2', width - marginRight);
-    baseline.setAttribute('y1', marginTop + plotHeight);
-    baseline.setAttribute('y2', marginTop + plotHeight);
-    baseline.setAttribute('class', 'axis-line');
-    unitsChartEl.appendChild(baseline);
-
-    points.forEach((p, i) => {
-      const x = xFor(i);
-      const barTop = yForVal(p.value);
-
-      const rect = document.createElementNS(svgNS, 'rect');
-      rect.setAttribute('x', x - barWidth / 2);
-      rect.setAttribute('y', barTop);
-      rect.setAttribute('width', barWidth);
-      rect.setAttribute('height', marginTop + plotHeight - barTop);
-      rect.setAttribute('rx', 4);
-      rect.setAttribute('class', 'units-bar');
-      unitsChartEl.appendChild(rect);
-
-      const valueLabel = document.createElementNS(svgNS, 'text');
-      valueLabel.setAttribute('x', x);
-      valueLabel.setAttribute('y', barTop - 6);
-      valueLabel.setAttribute('text-anchor', 'middle');
-      valueLabel.setAttribute('class', 'glucose-value');
-      valueLabel.textContent = `${p.value} U`;
-      unitsChartEl.appendChild(valueLabel);
-
-      const dayLabel = document.createElementNS(svgNS, 'text');
-      dayLabel.setAttribute('x', x);
-      dayLabel.setAttribute('y', height - 6);
-      dayLabel.setAttribute('text-anchor', 'middle');
-      dayLabel.setAttribute('class', 'day-label');
-      dayLabel.textContent = formatShortDate(p.iso).replace(/^\S+\s/, '');
-      unitsChartEl.appendChild(dayLabel);
-    });
-  }
-
   function bindCollapsible(toggleId, bodyId) {
     const toggle = document.getElementById(toggleId);
     const body = document.getElementById(bodyId);
@@ -679,6 +618,36 @@
   bindCollapsible('introToggle', 'introBody');
   bindCollapsible('summaryToggle', 'summaryBody');
   document.getElementById('printBtn').addEventListener('click', () => window.print());
+
+  // --- Période de la vue d'ensemble / du PDF ---
+  const summaryRangeStartInput = document.getElementById('summaryRangeStart');
+  const summaryRangeEndInput = document.getElementById('summaryRangeEnd');
+
+  function syncSummaryRangeUI() {
+    const dates = listSummaryDates();
+    summaryRangeStartInput.value = state.summaryRange.start || dates[0] || '';
+    summaryRangeEndInput.value = state.summaryRange.end || dates[dates.length - 1] || '';
+  }
+  syncSummaryRangeUI();
+
+  summaryRangeStartInput.addEventListener('change', () => {
+    state.summaryRange.start = summaryRangeStartInput.value;
+    saveState();
+    recompute();
+    syncSummaryRangeUI();
+  });
+  summaryRangeEndInput.addEventListener('change', () => {
+    state.summaryRange.end = summaryRangeEndInput.value;
+    saveState();
+    recompute();
+    syncSummaryRangeUI();
+  });
+  document.getElementById('summaryRangeReset').addEventListener('click', () => {
+    state.summaryRange = { start: '', end: '' };
+    saveState();
+    recompute();
+    syncSummaryRangeUI();
+  });
 
   function renderAbsenceRow(container, iso, absence) {
     const node = absenceTemplate.content.firstElementChild.cloneNode(true);

@@ -156,11 +156,20 @@
     </button>
     <div class="collapsible-body" id="summaryBody" hidden>
       <p class="hint no-print">
-        Tous les horaires calculés sur les 4 prochaines semaines, en un
-        coup d'œil. Le bouton ci-dessous ouvre l'impression : choisis
-        <strong>Enregistrer au format PDF</strong> comme imprimante pour
-        en garder une copie ou l'imprimer.
+        Tous les horaires calculés, en un coup d'œil. Le bouton ci-dessous
+        ouvre l'impression : choisis <strong>Enregistrer au format
+        PDF</strong> comme imprimante pour en garder une copie ou
+        l'imprimer.
       </p>
+      <div class="field-row no-print">
+        <label>Période affichée / imprimée</label>
+        <div class="anchor-inputs">
+          <input type="date" id="summaryRangeStart" />
+          <span>→</span>
+          <input type="date" id="summaryRangeEnd" />
+        </div>
+      </div>
+      <button class="btn small secondary no-print" id="summaryRangeReset" type="button">Revenir aux 4 semaines par défaut</button>
       <button class="btn secondary no-print" id="printBtn" type="button">Imprimer / Enregistrer en PDF</button>
       <div class="print-only print-title">
         <h2>PlanifiCat — Horaires d'injection</h2>
@@ -173,14 +182,6 @@
       <p class="hint no-print" id="chartEmptyHint">
         Renseigne une glycémie sous un horaire (ou ajoute un dextro) pour
         voir la courbe apparaître ici.
-      </p>
-      <h3 class="sub-heading">Unités d'insuline injectées</h3>
-      <div class="chart-wrap" id="unitsChartWrap">
-        <svg id="unitsChart" aria-label="Unités d'insuline injectées"></svg>
-      </div>
-      <p class="hint no-print" id="unitsChartEmptyHint">
-        Renseigne le nombre d'unités sous un horaire pour voir ce suivi
-        apparaître ici.
       </p>
       <div class="summary-table-wrap">
         <table class="summary-table">
