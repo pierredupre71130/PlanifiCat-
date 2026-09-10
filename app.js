@@ -1167,9 +1167,21 @@
   renderAll();
   if (hasGithubConfig()) syncNow('auto');
 
+  // Une fois qu'une nouvelle version du service worker prend le contrôle
+  // de la page (après une mise à jour de l'app), recharge automatiquement
+  // une fois pour afficher la nouvelle version — sans quoi il faudrait
+  // recharger la page manuellement une deuxième fois pour la voir, ce
+  // qu'on ne peut pas demander à quelqu'un qui ne connaît pas ce détail
+  // technique. Le drapeau `refreshed` évite une boucle de rechargement.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    });
+    let refreshed = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshed) return;
+      refreshed = true;
+      window.location.reload();
     });
   }
 })();
