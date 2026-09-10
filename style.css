@@ -225,7 +225,7 @@ main {
 .day-chip.is-selected .chip-num { color: #fff; }
 .day-chip.is-selected .chip-indicator { fill: #fff; }
 
-.range-controls { display: flex; gap: 0.6rem; justify-content: center; margin-top: 0.7rem; }
+.range-controls { display: flex; gap: 0.6rem; justify-content: center; margin-top: 0.7rem; flex-wrap: wrap; }
 
 .day-card {
   background: var(--card-bg);
