@@ -328,13 +328,15 @@
     const glucoseControl = document.createElement('div');
     glucoseControl.className = 'glucose-control';
 
+    // type="text", pas "number" : un champ number tape littéralement la
+    // virgule d'un "1,20" au lieu de la refuser ou de la convertir (testé :
+    // ça devient silencieusement "120"). parseGlucoseValue() gère la
+    // conversion virgule/point elle-même à la validation.
     const glucoseInput = document.createElement('input');
-    glucoseInput.type = 'number';
-    glucoseInput.step = '0.01';
-    glucoseInput.min = '0';
+    glucoseInput.type = 'text';
     glucoseInput.inputMode = 'decimal';
     glucoseInput.placeholder = 'g/L';
-    glucoseInput.title = 'Glycémie en g/L';
+    glucoseInput.title = 'Glycémie en g/L (1.20 ou 1,20)';
     glucoseInput.value = typeof reading.glucose === 'number' ? reading.glucose : '';
     glucoseInput.addEventListener('change', () => setReading(iso, idx, 'glucose', glucoseInput.value));
 
