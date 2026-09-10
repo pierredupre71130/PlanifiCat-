@@ -345,10 +345,20 @@
   });
 
   // --- Plage de jours ---
+  // Les jours ajoutés/retirés le sont en fin de bandeau : sans ce scroll,
+  // le clic ne change rien à ce qui est visible à l'écran (impression que
+  // le bouton ne fait rien).
+  function scrollStripToEnd() {
+    const chips = daystripEl.querySelectorAll('.day-chip');
+    const last = chips[chips.length - 1];
+    if (last) last.scrollIntoView({ behavior: 'smooth', inline: 'end', block: 'nearest' });
+  }
+
   document.getElementById('addWeekBtn').addEventListener('click', () => {
     state.rangeEnd = addDaysISO(state.rangeEnd, 7);
     saveState();
     renderAll();
+    scrollStripToEnd();
   });
   document.getElementById('removeWeekBtn').addEventListener('click', () => {
     const candidate = addDaysISO(state.rangeEnd, -7);
@@ -356,6 +366,7 @@
       state.rangeEnd = candidate;
       saveState();
       renderAll();
+      scrollStripToEnd();
     }
   });
 
