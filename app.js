@@ -118,10 +118,17 @@
 
   // Période affichée dans la vue d'ensemble / le PDF : la sélection
   // manuelle si elle est valide, sinon la même fenêtre que le bandeau.
+  // Une seule des deux dates renseignée doit quand même changer quelque
+  // chose immédiatement (sinon on dirait que le réglage ne fait rien tant
+  // que les deux champs n'ont pas été remplis) : on complète alors avec
+  // la même durée par défaut (4 semaines) à partir de la date donnée.
   function listSummaryDates() {
-    const { start, end } = state.summaryRange || {};
-    if (start && end && start <= end) return datesBetween(start, end);
-    return listDates();
+    let { start, end } = state.summaryRange || {};
+    if (!start && !end) return listDates();
+    if (start && !end) end = addDaysISO(start, WINDOW_DAYS - 1);
+    if (end && !start) start = addDaysISO(end, -(WINDOW_DAYS - 1));
+    if (start > end) [start, end] = [end, start];
+    return datesBetween(start, end);
   }
 
   const WEEKDAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
