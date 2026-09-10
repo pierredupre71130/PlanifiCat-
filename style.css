@@ -12,6 +12,7 @@
   --warn-bg: #fff2df;
   --danger: #b23a3a;
   --danger-bg: #fbe7e7;
+  --accent: #e08a4f;
   color-scheme: light;
 }
 
@@ -30,6 +31,7 @@
     --warn-bg: #3a2c10;
     --danger: #e18080;
     --danger-bg: #3a1c1c;
+    --accent: #f0a878;
     color-scheme: dark;
   }
 }
@@ -59,7 +61,20 @@ body {
   gap: 0.75rem;
 }
 
-.logo { font-size: 2rem; }
+.logo {
+  width: 2.6rem;
+  height: 2.6rem;
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cat-logo { width: 1.9rem; height: 1.9rem; fill: #fff; }
+.cat-logo .cat-eye,
+.cat-logo .cat-mouth { fill: var(--primary); }
+.cat-logo .cat-mouth { fill: none; stroke: var(--primary); stroke-width: 1.6; stroke-linecap: round; }
 
 .topbar h1 { margin: 0; font-size: 1.3rem; }
 .subtitle { margin: 0.1rem 0 0; font-size: 0.85rem; opacity: 0.9; }
@@ -88,12 +103,14 @@ main {
 .steps { margin: 0 0 0.8rem; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.92rem; color: var(--text); line-height: 1.45; }
 .steps li::marker { color: var(--primary-dark); font-weight: 600; }
 
-.legend { display: flex; flex-wrap: wrap; gap: 0.8rem; margin: 0 0 0.8rem; font-size: 0.82rem; color: var(--text-muted); }
-.legend-item { display: inline-flex; align-items: center; gap: 0.35rem; }
-.dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; display: inline-block; }
-.dot.ok { background: var(--ok); }
-.dot.warn { background: var(--warn); }
-.dot.danger { background: var(--danger); }
+.legend { display: flex; flex-wrap: wrap; gap: 0.9rem; margin: 0 0 0.8rem; font-size: 0.82rem; color: var(--text-muted); }
+.legend-item { display: inline-flex; align-items: center; gap: 0.4rem; }
+
+.paw-icon { flex: 0 0 auto; }
+.paw-icon.dot { width: 0.95rem; height: 0.95rem; }
+.paw-icon.dot.ok { fill: var(--ok); }
+.paw-icon.dot.warn { fill: var(--warn); }
+.paw-icon.dot.danger { fill: var(--danger); }
 
 .collapsible {
   width: 100%;
@@ -163,7 +180,52 @@ main {
 }
 .file-btn { display: inline-flex; align-items: center; }
 
-.range-controls { display: flex; gap: 0.6rem; justify-content: center; }
+.strip-card { padding: 0.85rem 0.85rem 0.7rem; }
+
+.daystrip-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding-bottom: 0.3rem;
+}
+.daystrip { display: flex; gap: 0.5rem; width: max-content; }
+
+.day-chip {
+  flex: 0 0 auto;
+  width: 3.4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.5rem 0.3rem 0.45rem;
+  border-radius: 14px;
+  border: 2px solid transparent;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.chip-weekday { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.chip-num { font-size: 1.1rem; font-weight: 700; color: var(--text); line-height: 1; }
+.chip-indicator { width: 0.75rem; height: 0.75rem; opacity: 0; fill: var(--text-muted); }
+.day-chip.has-absence .chip-indicator { opacity: 0.85; }
+
+.day-chip.is-today { border-color: var(--accent); }
+
+.day-chip.status-ok .chip-indicator { fill: var(--ok); }
+.day-chip.status-warn .chip-indicator { fill: var(--warn); }
+.day-chip.status-danger .chip-indicator { fill: var(--danger); }
+
+/* La sélection doit toujours gagner sur la couleur de statut (fond plein
+   coloré en dessous, sinon la patte devient invisible si les 2 teintes
+   se confondent) : ces règles restent après celles du statut. */
+.day-chip.is-selected { background: var(--primary); border-color: var(--primary); }
+.day-chip.is-selected .chip-weekday,
+.day-chip.is-selected .chip-num { color: #fff; }
+.day-chip.is-selected .chip-indicator { fill: #fff; }
+
+.range-controls { display: flex; gap: 0.6rem; justify-content: center; margin-top: 0.7rem; }
 
 .day-card {
   background: var(--card-bg);

@@ -94,6 +94,7 @@
   }
 
   const WEEKDAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+  const WEEKDAYS_SHORT = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
   const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
   function formatDayTitle(iso) {
@@ -101,9 +102,20 @@
     return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
   }
 
-  const daysListEl = document.getElementById('daysList');
+  const daystripEl = document.getElementById('daystrip');
+  const dayDetailEl = document.getElementById('dayDetail');
+  const chipTemplate = document.getElementById('chipTemplate');
   const dayTemplate = document.getElementById('dayTemplate');
   const absenceTemplate = document.getElementById('absenceTemplate');
+
+  // Jour actuellement affiché dans le panneau de détail sous le bandeau.
+  let selectedDate = null;
+  function ensureSelectedDate() {
+    const dates = listDates();
+    if (!dates.includes(selectedDate)) {
+      selectedDate = dates.includes(todayISO()) ? todayISO() : dates[0];
+    }
+  }
 
   function getDayData(iso) {
     if (!state.days[iso]) state.days[iso] = { absences: [] };
@@ -135,30 +147,32 @@
   function recompute() {
     const days = buildSchedulerInput();
     lastSchedule = days.length ? computeSchedule(days, buildSettings()) : [];
-    renderResults();
+    updateStripStatuses();
+    renderDetailResults();
   }
 
-  function renderResults() {
+  function scheduleByDate() {
     const byDate = {};
     for (const d of lastSchedule) byDate[d.date] = d.times;
+    return byDate;
+  }
 
-    for (const iso of listDates()) {
-      const card = daysListEl.querySelector(`[data-date="${iso}"]`);
-      if (!card) continue;
-      const resultsEl = card.querySelector('.results');
-      resultsEl.innerHTML = '';
-      const times = byDate[iso] || [];
-      for (const t of times) {
-        const chip = document.createElement('div');
-        let cls = 'result-chip';
-        if (t.warnings.includes('creneau-impossible')) cls += ' danger';
-        else if (t.warnings.includes('ecart-hors-tolerance')) cls += ' warn';
-        chip.className = cls;
-        const gapText = t.gapFromPrevLabel ? `écart ${t.gapFromPrevLabel}` : '';
-        const warnText = t.warnings.includes('creneau-impossible') ? ' · créneau impossible !' : '';
-        chip.innerHTML = `💉 ${t.time}<span class="gap">${gapText}${warnText}</span>`;
-        resultsEl.appendChild(chip);
-      }
+  function renderDetailResults() {
+    const card = dayDetailEl.querySelector(`[data-date="${selectedDate}"]`);
+    if (!card) return;
+    const resultsEl = card.querySelector('.results');
+    resultsEl.innerHTML = '';
+    const times = scheduleByDate()[selectedDate] || [];
+    for (const t of times) {
+      const chip = document.createElement('div');
+      let cls = 'result-chip';
+      if (t.warnings.includes('creneau-impossible')) cls += ' danger';
+      else if (t.warnings.includes('ecart-hors-tolerance')) cls += ' warn';
+      chip.className = cls;
+      const gapText = t.gapFromPrevLabel ? `écart ${t.gapFromPrevLabel}` : '';
+      const warnText = t.warnings.includes('creneau-impossible') ? ' · créneau impossible !' : '';
+      chip.innerHTML = `💉 ${t.time}<span class="gap">${gapText}${warnText}</span>`;
+      resultsEl.appendChild(chip);
     }
   }
 
@@ -219,11 +233,52 @@
     return node;
   }
 
-  function renderDaysList() {
-    daysListEl.innerHTML = '';
+  function renderDayStrip() {
+    daystripEl.innerHTML = '';
     for (const iso of listDates()) {
-      daysListEl.appendChild(renderDayCard(iso));
+      const chip = chipTemplate.content.firstElementChild.cloneNode(true);
+      chip.dataset.date = iso;
+      const d = new Date(iso + 'T00:00:00');
+      chip.querySelector('.chip-weekday').textContent = WEEKDAYS_SHORT[d.getDay()];
+      chip.querySelector('.chip-num').textContent = d.getDate();
+      if (iso === todayISO()) chip.classList.add('is-today');
+      chip.addEventListener('click', () => selectDate(iso));
+      daystripEl.appendChild(chip);
     }
+  }
+
+  function updateStripStatuses() {
+    const byDate = scheduleByDate();
+    daystripEl.querySelectorAll('.day-chip').forEach((chip) => {
+      const iso = chip.dataset.date;
+      chip.classList.toggle('is-selected', iso === selectedDate);
+      chip.classList.remove('status-ok', 'status-warn', 'status-danger');
+      const times = byDate[iso] || [];
+      if (times.some((t) => t.warnings.includes('creneau-impossible'))) chip.classList.add('status-danger');
+      else if (times.some((t) => t.warnings.includes('ecart-hors-tolerance'))) chip.classList.add('status-warn');
+      else if (times.length) chip.classList.add('status-ok');
+      const hasAbsence = getDayData(iso).absences.some((a) => a.start && a.end);
+      chip.classList.toggle('has-absence', hasAbsence);
+    });
+  }
+
+  function selectDate(iso) {
+    selectedDate = iso;
+    renderDayDetail();
+    updateStripStatuses();
+    const chip = daystripEl.querySelector(`[data-date="${iso}"]`);
+    if (chip) chip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }
+
+  function renderDayDetail() {
+    ensureSelectedDate();
+    dayDetailEl.innerHTML = '';
+    dayDetailEl.appendChild(renderDayCard(selectedDate));
+  }
+
+  function renderAll() {
+    renderDayStrip();
+    renderDayDetail();
     recompute();
   }
 
@@ -293,14 +348,14 @@
   document.getElementById('addWeekBtn').addEventListener('click', () => {
     state.rangeEnd = addDaysISO(state.rangeEnd, 7);
     saveState();
-    renderDaysList();
+    renderAll();
   });
   document.getElementById('removeWeekBtn').addEventListener('click', () => {
     const candidate = addDaysISO(state.rangeEnd, -7);
     if (candidate >= state.rangeStart) {
       state.rangeEnd = candidate;
       saveState();
-      renderDaysList();
+      renderAll();
     }
   });
 
@@ -326,7 +381,7 @@
         applyRemotePayload(parsed); // conserve les réglages GitHub déjà en place
         saveState();
         syncSettingsUI();
-        renderDaysList();
+        renderAll();
       } catch (err) {
         alert("Le fichier importé n'est pas valide.");
       }
@@ -487,7 +542,7 @@
           state.sync.lastSyncedAt = remote.updatedAt;
           saveState({ touch: false });
           syncSettingsUI();
-          renderDaysList();
+          renderAll();
           setSyncStatus('ok', `Données distantes chargées — ${formatDateTime(new Date().toISOString())}`);
           syncing = false;
           return;
@@ -540,7 +595,7 @@
   // --- Démarrage ---
   applyConfigFromUrl();
   syncSettingsUI();
-  renderDaysList();
+  renderAll();
   if (hasGithubConfig()) syncNow('auto');
 
   if ('serviceWorker' in navigator) {
