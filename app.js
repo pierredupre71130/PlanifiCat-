@@ -305,8 +305,7 @@
     noneOpt.value = '';
     noneOpt.textContent = '—';
     select.appendChild(noneOpt);
-    for (let i = 1; i <= 60; i++) {
-      const v = i / 2; // 0.5, 1, 1.5, ... 30
+    for (let v = 1; v <= 30; v++) {
       const opt = document.createElement('option');
       opt.value = String(v);
       opt.textContent = String(v);
