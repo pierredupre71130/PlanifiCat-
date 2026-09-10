@@ -97,7 +97,6 @@ main {
 
 .intro p { margin: 0 0 0.6rem; font-size: 0.92rem; color: var(--text-muted); line-height: 1.45; }
 .intro p:last-child { margin-bottom: 0; }
-.disclaimer { font-size: 0.85rem !important; }
 
 .intro-title { margin: 0 0 0.6rem; font-size: 1.05rem; }
 .steps { margin: 0 0 0.8rem; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.92rem; color: var(--text); line-height: 1.45; }
@@ -132,6 +131,7 @@ main {
 
 .field-row { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; }
 .field-row label { color: var(--text-muted); }
+.field-hint { margin: -0.15rem 0 0; font-size: 0.75rem; color: var(--accent); font-style: italic; }
 .field-row input[type="number"],
 .field-row input[type="time"],
 .field-row input[type="date"] {
@@ -224,8 +224,6 @@ main {
 .day-chip.is-selected .chip-weekday,
 .day-chip.is-selected .chip-num { color: #fff; }
 .day-chip.is-selected .chip-indicator { fill: #fff; }
-
-.range-controls { display: flex; gap: 0.6rem; justify-content: center; margin-top: 0.7rem; flex-wrap: wrap; }
 
 .day-card {
   background: var(--card-bg);

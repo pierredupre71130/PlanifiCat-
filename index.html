@@ -37,18 +37,13 @@
       <li>Pour chaque jour ci-dessous, appuie sur <strong>+ Absence (travail / rdv)</strong> et indique l'heure de début et de fin où tu n'es pas disponible (ex : 06h30 → 14h30 pour un poste du matin).</li>
       <li>Les 2 horaires d'injection 💉 s'affichent automatiquement en dessous, calculés pour rester autour de 12h d'écart.</li>
       <li>Jour de repos, sans contrainte ? Laisse-le sans absence : l'appli garde un horaire stable, ou le décale un peu à l'avance si un jour suivant l'impose.</li>
-      <li>Utilise <strong>+ 7 jours</strong> tout en bas pour voir la semaine suivante.</li>
+      <li>Fais glisser le bandeau de jours vers la droite pour voir les jours suivants (jusqu'à 4 semaines à l'avance).</li>
     </ol>
     <div class="legend">
       <span class="legend-item"><svg class="paw-icon dot ok" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>horaire ok</span>
       <span class="legend-item"><svg class="paw-icon dot warn" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>écart un peu hors tolérance</span>
       <span class="legend-item"><svg class="paw-icon dot danger" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>aucun horaire possible ce jour</span>
     </div>
-    <p class="disclaimer">
-      ⚠️ Outil d'aide au calcul uniquement : la fréquence, l'écart toléré et la
-      marge de décalage doivent rester ceux validés par l'équipe médicale qui
-      suit le traitement.
-    </p>
   </section>
 
   <section class="card" id="settingsCard">
@@ -56,6 +51,12 @@
       ⚙️ Réglages <span class="chev">▾</span>
     </button>
     <div class="collapsible-body" id="settingsBody" hidden>
+      <p class="hint">
+        Ces réglages ajustent la façon dont les horaires d'injection sont
+        calculés. Les valeurs déjà en place conviennent normalement — n'y
+        touche que si le médecin donne une consigne différente (un autre
+        écart toléré, une autre marge...).
+      </p>
       <div class="field-row">
         <label for="toleranceInput">Tolérance autour de 12h (± minutes)</label>
         <input type="number" id="toleranceInput" min="0" max="180" step="5" value="60" />
@@ -90,19 +91,30 @@
       <h3 class="sub-heading">☁️ Synchronisation GitHub</h3>
       <p class="hint">
         Sauvegarde tes données sur un dépôt GitHub privé pour ne pas les
-        perdre et les retrouver sur un autre appareil. Voir le README pour
-        la mise en place (création du dépôt privé + du token).
+        perdre et les retrouver sur un autre appareil.
+      </p>
+      <p class="hint">
+        La synchronisation se fait <strong>automatiquement</strong> :
+        quelques secondes après chaque modification, et à chaque ouverture
+        de l'app (qui va aussi chercher les dernières données au cas où
+        elles auraient changé ailleurs). Le bouton
+        <strong>Synchroniser maintenant</strong> ci-dessous reste
+        disponible pour forcer une synchro immédiate (ex : juste avant de
+        changer d'appareil), mais il n'est pas obligatoire au quotidien.
       </p>
       <div class="field-row">
         <label for="ghOwner">Propriétaire du dépôt</label>
+        <p class="field-hint">À ne pas modifier</p>
         <input type="text" id="ghOwner" placeholder="ex : pierredupre71130" autocomplete="off" />
       </div>
       <div class="field-row">
         <label for="ghRepo">Nom du dépôt privé de données</label>
+        <p class="field-hint">À ne pas modifier</p>
         <input type="text" id="ghRepo" placeholder="ex : planificat-data" autocomplete="off" />
       </div>
       <div class="field-row">
         <label for="ghToken">Token d'accès (fine-grained, permission Contents)</label>
+        <p class="field-hint">À ne pas modifier</p>
         <input type="password" id="ghToken" placeholder="github_pat_..." autocomplete="off" />
       </div>
       <div class="field-row buttons-row">
@@ -115,10 +127,6 @@
   <section class="card strip-card">
     <div class="daystrip-scroll">
       <div class="daystrip" id="daystrip"></div>
-    </div>
-    <div class="range-controls">
-      <button class="btn small secondary" id="removeWeekBtn" type="button">Voir 7 jours de moins</button>
-      <button class="btn small secondary" id="addWeekBtn" type="button">Voir 7 jours de plus</button>
     </div>
   </section>
 

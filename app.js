@@ -35,8 +35,6 @@
         anchorEnabled: false,
         anchor: { date: todayISO(), time: '06:25' },
       },
-      rangeStart: todayISO(),
-      rangeEnd: addDaysISO(todayISO(), 13),
       days: {}, // 'YYYY-MM-DD' -> { absences: [{id,label,start,end}] }
       sync: {
         owner: '',
@@ -81,14 +79,15 @@
     return 'a' + Date.now().toString(36) + (uidCounter++).toString(36);
   }
 
+  // Fenêtre glissante fixe (pas de réglage manuel) : toujours "aujourd'hui"
+  // + les 27 jours suivants, recalculée à chaque ouverture de l'app.
+  const WINDOW_DAYS = 28;
   function listDates() {
     const dates = [];
-    let cur = state.rangeStart;
-    let guard = 0;
-    while (cur <= state.rangeEnd && guard < 400) {
+    let cur = todayISO();
+    for (let i = 0; i < WINDOW_DAYS; i++) {
       dates.push(cur);
       cur = addDaysISO(cur, 1);
-      guard++;
     }
     return dates;
   }
@@ -344,32 +343,6 @@
     recompute();
   });
 
-  // --- Plage de jours ---
-  // Les jours ajoutés/retirés le sont en fin de bandeau : sans ce scroll,
-  // le clic ne change rien à ce qui est visible à l'écran (impression que
-  // le bouton ne fait rien).
-  function scrollStripToEnd() {
-    const chips = daystripEl.querySelectorAll('.day-chip');
-    const last = chips[chips.length - 1];
-    if (last) last.scrollIntoView({ behavior: 'smooth', inline: 'end', block: 'nearest' });
-  }
-
-  document.getElementById('addWeekBtn').addEventListener('click', () => {
-    state.rangeEnd = addDaysISO(state.rangeEnd, 7);
-    saveState();
-    renderAll();
-    scrollStripToEnd();
-  });
-  document.getElementById('removeWeekBtn').addEventListener('click', () => {
-    const candidate = addDaysISO(state.rangeEnd, -7);
-    if (candidate >= state.rangeStart) {
-      state.rangeEnd = candidate;
-      saveState();
-      renderAll();
-      scrollStripToEnd();
-    }
-  });
-
   // --- Export / import ---
   document.getElementById('exportBtn').addEventListener('click', () => {
     // Ne contient jamais le token GitHub, uniquement les données de planning.
@@ -432,8 +405,6 @@
     return {
       updatedAt: state.updatedAt,
       settings: state.settings,
-      rangeStart: state.rangeStart,
-      rangeEnd: state.rangeEnd,
       days: state.days,
     };
   }
@@ -441,8 +412,6 @@
   function applyRemotePayload(payload) {
     state.updatedAt = payload.updatedAt || new Date().toISOString();
     state.settings = { ...state.settings, ...(payload.settings || {}) };
-    state.rangeStart = payload.rangeStart || state.rangeStart;
-    state.rangeEnd = payload.rangeEnd || state.rangeEnd;
     state.days = payload.days || {};
   }
 
