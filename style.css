@@ -271,6 +271,42 @@ main {
   flex-wrap: wrap;
 }
 
+.extra-checks { margin-top: 0.8rem; }
+.extra-check-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+.extra-check-row input[type="time"],
+.extra-check-row input[type="number"] {
+  padding: 0.5rem 0.4rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.extra-check-row input[type="number"] { width: 5rem; }
+.add-extra-check { margin-top: 0.8rem; }
+
+.reading-inputs {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+.reading-inputs input {
+  width: 4rem;
+  padding: 0.3rem 0.35rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
 .result-chip {
   background: var(--ok-bg);
   color: var(--ok);
@@ -336,6 +372,24 @@ main {
 .summary-table tr.status-warn td.time-cell { color: var(--warn); }
 .summary-table tr.status-danger td.time-cell { color: var(--danger); }
 .summary-table .cell-note { display: block; font-weight: 400; font-size: 0.72rem; color: var(--text-muted); }
+.summary-table td.notes-cell { white-space: normal; font-size: 0.82rem; color: var(--text-muted); }
+
+.chart-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 0.6rem;
+  background: var(--bg);
+  border-radius: 10px;
+}
+#glucoseChart { display: block; height: 200px; }
+#glucoseChart .axis-line { stroke: var(--border); stroke-width: 1; }
+#glucoseChart .axis-label { fill: var(--text-muted); font-size: 10px; }
+#glucoseChart .glucose-line { fill: none; stroke: var(--primary); stroke-width: 2; }
+#glucoseChart .glucose-point circle { fill: var(--primary); }
+#glucoseChart .glucose-point.extra circle { fill: var(--card-bg); stroke: var(--primary); stroke-width: 2; }
+#glucoseChart .glucose-value { fill: var(--text); font-size: 10px; font-weight: 600; }
+#glucoseChart .glucose-units { fill: var(--accent); font-size: 9px; }
+#glucoseChart .day-label { fill: var(--text-muted); font-size: 9px; }
 
 @media print {
   .no-print { display: none !important; }

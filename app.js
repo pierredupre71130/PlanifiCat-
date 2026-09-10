@@ -125,9 +125,16 @@
     }
   }
 
+  // Centralise les valeurs par défaut : garantit la forme complète d'un
+  // jour même pour une entrée ancienne (créée avant l'ajout d'un champ).
   function getDayData(iso) {
-    if (!state.days[iso]) state.days[iso] = { absences: [] };
-    return state.days[iso];
+    if (!state.days[iso]) state.days[iso] = {};
+    const day = state.days[iso];
+    if (!Array.isArray(day.absences)) day.absences = [];
+    if (!Array.isArray(day.overrides)) day.overrides = [null, null];
+    if (!Array.isArray(day.readings)) day.readings = [{ glucose: null, units: null }, { glucose: null, units: null }];
+    if (!Array.isArray(day.extraChecks)) day.extraChecks = [];
+    return day;
   }
 
   function buildSchedulerInput() {
@@ -136,7 +143,7 @@
       return {
         date: iso,
         absences: day.absences.filter((a) => a.start && a.end),
-        overrides: day.overrides || [null, null],
+        overrides: day.overrides,
       };
     });
   }
@@ -145,10 +152,24 @@
   // d'un jour. `time` à null repasse ce créneau en calcul automatique.
   function setOverride(iso, slotIndex, time) {
     const day = getDayData(iso);
-    if (!Array.isArray(day.overrides)) day.overrides = [null, null];
     day.overrides[slotIndex] = time;
     saveState();
     recompute();
+  }
+
+  // Glycémie/unités ne changent pas les horaires calculés : pas besoin de
+  // relancer le calcul (recompute), juste de rafraîchir ce qui les affiche.
+  function refreshTracking() {
+    renderSummaryTable();
+    renderGlucoseChart();
+  }
+
+  function setReading(iso, slotIndex, field, rawValue) {
+    const day = getDayData(iso);
+    const value = rawValue === '' ? null : Number(rawValue);
+    day.readings[slotIndex][field] = Number.isFinite(value) ? value : null;
+    saveState();
+    refreshTracking();
   }
 
   function buildSettings() {
@@ -176,6 +197,7 @@
     updateStripStatuses();
     renderDetailResults();
     renderSummaryTable();
+    renderGlucoseChart();
   }
 
   function scheduleByDate() {
@@ -228,6 +250,32 @@
       chip.appendChild(input);
       chip.appendChild(gapSpan);
 
+      const reading = getDayData(selectedDate).readings[idx] || { glucose: null, units: null };
+      const readingRow = document.createElement('div');
+      readingRow.className = 'reading-inputs';
+
+      const glucoseInput = document.createElement('input');
+      glucoseInput.type = 'number';
+      glucoseInput.step = '0.01';
+      glucoseInput.min = '0';
+      glucoseInput.placeholder = 'g/L';
+      glucoseInput.title = 'Glycémie (g/L)';
+      glucoseInput.value = reading.glucose ?? '';
+      glucoseInput.addEventListener('change', () => setReading(selectedDate, idx, 'glucose', glucoseInput.value));
+
+      const unitsInput = document.createElement('input');
+      unitsInput.type = 'number';
+      unitsInput.step = '0.5';
+      unitsInput.min = '0';
+      unitsInput.placeholder = 'U';
+      unitsInput.title = "Nombre d'unités injectées";
+      unitsInput.value = reading.units ?? '';
+      unitsInput.addEventListener('change', () => setReading(selectedDate, idx, 'units', unitsInput.value));
+
+      readingRow.appendChild(glucoseInput);
+      readingRow.appendChild(unitsInput);
+      chip.appendChild(readingRow);
+
       if (isManual) {
         const resetBtn = document.createElement('button');
         resetBtn.type = 'button';
@@ -261,26 +309,178 @@
       dayCell.textContent = formatShortDate(iso);
       tr.appendChild(dayCell);
 
+      const day = getDayData(iso);
       for (let i = 0; i < 2; i++) {
         const t = times[i];
         const td = document.createElement('td');
         td.className = 'time-cell';
         if (t) {
-          let note = '';
-          if (t.warnings.includes('creneau-impossible')) note = 'impossible';
-          else if (t.warnings.includes('nuit')) note = 'nuit';
-          if (t.warnings.includes('manuel')) note = note ? `${note}, manuel` : 'manuel';
-          td.innerHTML = `${t.time}${note ? `<span class="cell-note">${note}</span>` : ''}`;
+          const notes = [];
+          if (t.warnings.includes('creneau-impossible')) notes.push('impossible');
+          else if (t.warnings.includes('nuit')) notes.push('nuit');
+          if (t.warnings.includes('manuel')) notes.push('manuel');
+          const reading = day.readings[i] || {};
+          if (reading.glucose != null) notes.push(`${reading.glucose} g/L`);
+          if (reading.units != null) notes.push(`${reading.units} U`);
+          const noteHtml = notes.length ? `<span class="cell-note">${notes.join(' · ')}</span>` : '';
+          td.innerHTML = `${t.time}${noteHtml}`;
         } else {
           td.textContent = '—';
         }
         tr.appendChild(td);
       }
+
+      const extraCell = document.createElement('td');
+      extraCell.className = 'notes-cell';
+      const extraWithValues = day.extraChecks.filter((c) => c.time && c.glucose != null);
+      extraCell.textContent = extraWithValues.length
+        ? extraWithValues.map((c) => `${c.time} : ${c.glucose} g/L`).join(', ')
+        : '';
+      tr.appendChild(extraCell);
+
       summaryTableBody.appendChild(tr);
     }
     if (dates.length) {
       printRangeEl.textContent = `Du ${formatDayTitle(dates[0])} au ${formatDayTitle(dates[dates.length - 1])}`;
     }
+  }
+
+  // --- Courbe de glycémie ---
+  const glucoseChartEl = document.getElementById('glucoseChart');
+  const chartEmptyHint = document.getElementById('chartEmptyHint');
+
+  function parseTimeToMinutes(hm) {
+    const [h, m] = hm.split(':').map(Number);
+    return h * 60 + m;
+  }
+
+  function collectGlucosePoints() {
+    const byDate = scheduleByDate();
+    const points = [];
+    listDates().forEach((iso, dayIdx) => {
+      const day = getDayData(iso);
+      const times = byDate[iso] || [];
+      times.forEach((t, i) => {
+        const reading = day.readings[i];
+        if (reading && reading.glucose != null) {
+          points.push({ iso, dayIdx, minutes: t.minutes, value: reading.glucose, units: reading.units, isExtra: false });
+        }
+      });
+      day.extraChecks.forEach((c) => {
+        if (c.time && c.glucose != null) {
+          points.push({ iso, dayIdx, minutes: parseTimeToMinutes(c.time), value: c.glucose, units: null, isExtra: true });
+        }
+      });
+    });
+    points.sort((a, b) => a.dayIdx - b.dayIdx || a.minutes - b.minutes);
+    return points;
+  }
+
+  function renderGlucoseChart() {
+    const points = collectGlucosePoints();
+    glucoseChartEl.innerHTML = '';
+    if (points.length === 0) {
+      // .hidden (propriété IDL) ne se reflète pas de façon fiable sur les
+      // éléments SVG dans tous les navigateurs : on manipule l'attribut
+      // directement plutôt que de compter dessus.
+      glucoseChartEl.setAttribute('hidden', '');
+      chartEmptyHint.removeAttribute('hidden');
+      return;
+    }
+    glucoseChartEl.removeAttribute('hidden');
+    chartEmptyHint.setAttribute('hidden', '');
+
+    const values = points.map((p) => p.value);
+    let min = Math.min(...values);
+    let max = Math.max(...values);
+    if (min === max) {
+      min -= 0.3;
+      max += 0.3;
+    }
+    const pad = (max - min) * 0.2;
+    min -= pad;
+    max += pad;
+
+    const spacing = 55;
+    const marginLeft = 36;
+    const marginRight = 16;
+    const marginTop = 22;
+    const marginBottom = 26;
+    const height = 200;
+    const plotHeight = height - marginTop - marginBottom;
+    const width = Math.max(320, marginLeft + marginRight + points.length * spacing);
+
+    const xFor = (i) => marginLeft + i * spacing;
+    const yFor = (v) => marginTop + plotHeight - ((v - min) / (max - min)) * plotHeight;
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    glucoseChartEl.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    glucoseChartEl.setAttribute('width', width);
+    glucoseChartEl.setAttribute('height', height);
+
+    [min + pad, (min + max) / 2, max - pad].forEach((v) => {
+      const y = yFor(v);
+      const line = document.createElementNS(svgNS, 'line');
+      line.setAttribute('x1', marginLeft - 6);
+      line.setAttribute('x2', width - marginRight);
+      line.setAttribute('y1', y);
+      line.setAttribute('y2', y);
+      line.setAttribute('class', 'axis-line');
+      glucoseChartEl.appendChild(line);
+
+      const label = document.createElementNS(svgNS, 'text');
+      label.setAttribute('x', 2);
+      label.setAttribute('y', y + 3);
+      label.setAttribute('class', 'axis-label');
+      label.textContent = v.toFixed(2);
+      glucoseChartEl.appendChild(label);
+    });
+
+    const polyline = document.createElementNS(svgNS, 'polyline');
+    polyline.setAttribute('class', 'glucose-line');
+    polyline.setAttribute('points', points.map((p, i) => `${xFor(i)},${yFor(p.value)}`).join(' '));
+    glucoseChartEl.appendChild(polyline);
+
+    points.forEach((p, i) => {
+      const x = xFor(i);
+      const y = yFor(p.value);
+      const g = document.createElementNS(svgNS, 'g');
+      g.setAttribute('class', 'glucose-point' + (p.isExtra ? ' extra' : ''));
+
+      const circle = document.createElementNS(svgNS, 'circle');
+      circle.setAttribute('cx', x);
+      circle.setAttribute('cy', y);
+      circle.setAttribute('r', 4);
+      g.appendChild(circle);
+
+      const valueLabel = document.createElementNS(svgNS, 'text');
+      valueLabel.setAttribute('x', x);
+      valueLabel.setAttribute('y', y - 8);
+      valueLabel.setAttribute('text-anchor', 'middle');
+      valueLabel.setAttribute('class', 'glucose-value');
+      valueLabel.textContent = p.value;
+      g.appendChild(valueLabel);
+
+      if (p.units != null) {
+        const unitsLabel = document.createElementNS(svgNS, 'text');
+        unitsLabel.setAttribute('x', x);
+        unitsLabel.setAttribute('y', y + 17);
+        unitsLabel.setAttribute('text-anchor', 'middle');
+        unitsLabel.setAttribute('class', 'glucose-units');
+        unitsLabel.textContent = `${p.units}U`;
+        g.appendChild(unitsLabel);
+      }
+
+      const dayLabel = document.createElementNS(svgNS, 'text');
+      dayLabel.setAttribute('x', x);
+      dayLabel.setAttribute('y', height - 6);
+      dayLabel.setAttribute('text-anchor', 'middle');
+      dayLabel.setAttribute('class', 'day-label');
+      dayLabel.textContent = formatShortDate(p.iso).replace(/^\S+\s/, '');
+      g.appendChild(dayLabel);
+
+      glucoseChartEl.appendChild(g);
+    });
   }
 
   function bindCollapsible(toggleId, bodyId) {
@@ -332,6 +532,39 @@
     container.appendChild(node);
   }
 
+  const extraCheckTemplate = document.getElementById('extraCheckTemplate');
+
+  function renderExtraCheckRow(container, iso, check) {
+    const node = extraCheckTemplate.content.firstElementChild.cloneNode(true);
+    const timeInput = node.querySelector('.extra-check-time');
+    const glucoseInput = node.querySelector('.extra-check-glucose');
+    const removeBtn = node.querySelector('.remove-extra-check');
+
+    timeInput.value = check.time || '';
+    glucoseInput.value = check.glucose ?? '';
+
+    timeInput.addEventListener('change', () => {
+      check.time = timeInput.value;
+      saveState();
+      refreshTracking();
+    });
+    glucoseInput.addEventListener('change', () => {
+      const value = glucoseInput.value === '' ? null : Number(glucoseInput.value);
+      check.glucose = Number.isFinite(value) ? value : null;
+      saveState();
+      refreshTracking();
+    });
+    removeBtn.addEventListener('click', () => {
+      const day = getDayData(iso);
+      day.extraChecks = day.extraChecks.filter((c) => c.id !== check.id);
+      node.remove();
+      saveState();
+      refreshTracking();
+    });
+
+    container.appendChild(node);
+  }
+
   function renderDayCard(iso) {
     const node = dayTemplate.content.firstElementChild.cloneNode(true);
     node.dataset.date = iso;
@@ -347,6 +580,18 @@
       const absence = { id: uid(), label: '', start: '', end: '' };
       day.absences.push(absence);
       renderAbsenceRow(absencesContainer, iso, absence);
+      saveState();
+    });
+
+    const extraChecksContainer = node.querySelector('.extra-checks');
+    for (const check of day.extraChecks) {
+      renderExtraCheckRow(extraChecksContainer, iso, check);
+    }
+
+    node.querySelector('.add-extra-check').addEventListener('click', () => {
+      const check = { id: uid(), time: '', glucose: null };
+      day.extraChecks.push(check);
+      renderExtraCheckRow(extraChecksContainer, iso, check);
       saveState();
     });
 

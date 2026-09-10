@@ -42,7 +42,8 @@
       <li>Un horaire calculé ne te convient pas ? Tape dessus pour le corriger toi-même ("fixé manuellement") : les jours autour se réajustent automatiquement pour rester à ~12h d'écart. Le lien <strong>↺ auto</strong> qui apparaît sous l'horaire modifié permet de revenir au calcul automatique.</li>
       <li>Jour de repos, sans contrainte ? Laisse-le sans absence : l'appli garde un horaire stable, ou le décale un peu à l'avance si un jour suivant l'impose.</li>
       <li>Fais glisser le bandeau de jours vers la droite pour voir les jours suivants (jusqu'à 4 semaines à l'avance).</li>
-      <li>Tout en bas, <strong>Vue d'ensemble du mois</strong> donne un tableau avec tous les horaires calculés, et un bouton pour l'imprimer ou l'enregistrer en PDF.</li>
+      <li>Sous chaque horaire, tu peux noter la <strong>glycémie (g/L)</strong> et le <strong>nombre d'unités</strong> injectées. <strong>+ Dextro</strong> permet d'ajouter un contrôle de glycémie supplémentaire, en dehors des injections.</li>
+      <li>Tout en bas, <strong>Vue d'ensemble du mois</strong> donne la courbe de glycémie, un tableau avec tous les horaires calculés, et un bouton pour l'imprimer ou l'enregistrer en PDF.</li>
     </ol>
     <div class="legend">
       <span class="legend-item"><svg class="paw-icon dot ok" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>horaire ok</span>
@@ -165,9 +166,17 @@
         <h2>PlanifiCat — Horaires d'injection</h2>
         <p id="printRange"></p>
       </div>
+      <h3 class="sub-heading">Courbe de glycémie</h3>
+      <div class="chart-wrap" id="chartWrap">
+        <svg id="glucoseChart" aria-label="Courbe de glycémie"></svg>
+      </div>
+      <p class="hint no-print" id="chartEmptyHint">
+        Renseigne une glycémie sous un horaire (ou ajoute un dextro) pour
+        voir la courbe apparaître ici.
+      </p>
       <div class="summary-table-wrap">
         <table class="summary-table">
-          <thead><tr><th>Jour</th><th>Injection 1</th><th>Injection 2</th></tr></thead>
+          <thead><tr><th>Jour</th><th>Injection 1</th><th>Injection 2</th><th>Autres contrôles</th></tr></thead>
           <tbody id="summaryTableBody"></tbody>
         </table>
       </div>
@@ -197,6 +206,8 @@
     <div class="absences"></div>
     <button class="btn small add-absence" type="button">+ Absence (travail / rdv)</button>
     <div class="results"></div>
+    <div class="extra-checks"></div>
+    <button class="btn small secondary add-extra-check" type="button">+ Dextro (contrôle supplémentaire)</button>
   </article>
 </template>
 
@@ -207,6 +218,15 @@
     <span>→</span>
     <input type="time" class="absence-end" />
     <button class="btn icon remove-absence" type="button" aria-label="Supprimer">✕</button>
+  </div>
+</template>
+
+<template id="extraCheckTemplate">
+  <div class="extra-check-row">
+    <span class="chip-emoji">🩸</span>
+    <input type="time" class="extra-check-time" />
+    <input type="number" class="extra-check-glucose" step="0.01" min="0" placeholder="g/L" />
+    <button class="btn icon remove-extra-check" type="button" aria-label="Supprimer">✕</button>
   </div>
 </template>
 
