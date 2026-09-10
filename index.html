@@ -23,12 +23,18 @@
 
 <main>
   <section class="card intro">
-    <p>
-      Indique tes créneaux d'absence (travail, rendez-vous) pour chaque jour.
-      L'appli calcule les 2 horaires d'injection qui restent le plus proche
-      possible de 12h d'écart, en évitant tes absences — et en anticipant
-      les jours suivants quand il faut décaler à l'avance.
-    </p>
+    <h2 class="intro-title">Comment ça marche</h2>
+    <ol class="steps">
+      <li>Pour chaque jour ci-dessous, appuie sur <strong>+ Absence (travail / rdv)</strong> et indique l'heure de début et de fin où tu n'es pas disponible (ex : 06h30 → 14h30 pour un poste du matin).</li>
+      <li>Les 2 horaires d'injection 💉 s'affichent automatiquement en dessous, calculés pour rester autour de 12h d'écart.</li>
+      <li>Jour de repos, sans contrainte ? Laisse-le sans absence : l'appli garde un horaire stable, ou le décale un peu à l'avance si un jour suivant l'impose.</li>
+      <li>Utilise <strong>+ 7 jours</strong> tout en bas pour voir la semaine suivante.</li>
+    </ol>
+    <div class="legend">
+      <span class="legend-item"><span class="dot ok"></span>horaire ok</span>
+      <span class="legend-item"><span class="dot warn"></span>écart un peu hors tolérance</span>
+      <span class="legend-item"><span class="dot danger"></span>aucun horaire possible ce jour</span>
+    </div>
     <p class="disclaimer">
       ⚠️ Outil d'aide au calcul uniquement : la fréquence, l'écart toléré et la
       marge de décalage doivent rester ceux validés par l'équipe médicale qui

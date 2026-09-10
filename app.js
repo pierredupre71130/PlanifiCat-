@@ -4,14 +4,25 @@
   const STORAGE_KEY = 'planificat-data-v1';
   const DAY_MS = 86400000;
 
+  // Toutes les dates sont manipulées en UTC pur (Date.UTC / getUTCDate...)
+  // pour éviter tout décalage lié au fuseau horaire local : mélanger une
+  // lecture locale (ex: new Date().toISOString()) avec une écriture UTC
+  // (ou l'inverse) fait dériver le calcul de +/-1 jour selon l'heure et le
+  // fuseau de l'appareil, ce qui peut carrément bloquer "jour + 1" sur le
+  // même jour.
   function todayISO() {
-    return new Date().toISOString().slice(0, 10);
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   }
 
   function addDaysISO(iso, n) {
-    const d = new Date(iso + 'T00:00:00');
-    d.setDate(d.getDate() + n);
-    return d.toISOString().slice(0, 10);
+    const [y, m, d] = iso.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    date.setUTCDate(date.getUTCDate() + n);
+    return date.toISOString().slice(0, 10);
   }
 
   function defaultState() {

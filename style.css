@@ -84,6 +84,17 @@ main {
 .intro p:last-child { margin-bottom: 0; }
 .disclaimer { font-size: 0.85rem !important; }
 
+.intro-title { margin: 0 0 0.6rem; font-size: 1.05rem; }
+.steps { margin: 0 0 0.8rem; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.92rem; color: var(--text); line-height: 1.45; }
+.steps li::marker { color: var(--primary-dark); font-weight: 600; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 0.8rem; margin: 0 0 0.8rem; font-size: 0.82rem; color: var(--text-muted); }
+.legend-item { display: inline-flex; align-items: center; gap: 0.35rem; }
+.dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; display: inline-block; }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.danger { background: var(--danger); }
+
 .collapsible {
   width: 100%;
   background: none;
