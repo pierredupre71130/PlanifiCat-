@@ -70,6 +70,30 @@
           <input type="file" id="importInput" accept="application/json" hidden />
         </label>
       </div>
+
+      <hr class="sep" />
+      <h3 class="sub-heading">☁️ Synchronisation GitHub</h3>
+      <p class="hint">
+        Sauvegarde tes données sur un dépôt GitHub privé pour ne pas les
+        perdre et les retrouver sur un autre appareil. Voir le README pour
+        la mise en place (création du dépôt privé + du token).
+      </p>
+      <div class="field-row">
+        <label for="ghOwner">Propriétaire du dépôt</label>
+        <input type="text" id="ghOwner" placeholder="ex : pierredupre71130" autocomplete="off" />
+      </div>
+      <div class="field-row">
+        <label for="ghRepo">Nom du dépôt privé de données</label>
+        <input type="text" id="ghRepo" placeholder="ex : planificat-data" autocomplete="off" />
+      </div>
+      <div class="field-row">
+        <label for="ghToken">Token d'accès (fine-grained, permission Contents)</label>
+        <input type="password" id="ghToken" placeholder="github_pat_..." autocomplete="off" />
+      </div>
+      <div class="field-row buttons-row">
+        <button class="btn secondary" id="syncNowBtn" type="button">Synchroniser maintenant</button>
+      </div>
+      <p class="sync-status" id="syncStatus">Non configuré.</p>
     </div>
   </section>
 

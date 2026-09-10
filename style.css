@@ -121,6 +121,14 @@ main {
 
 .buttons-row { flex-direction: row; flex-wrap: wrap; }
 
+.sep { border: none; border-top: 1px solid var(--border); margin: 0.4rem 0; }
+.sub-heading { margin: 0; font-size: 0.95rem; }
+.hint { margin: -0.3rem 0 0.2rem; font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; }
+.sync-status { margin: 0; font-size: 0.85rem; color: var(--text-muted); }
+.sync-status.ok { color: var(--ok); }
+.sync-status.error { color: var(--danger); }
+.sync-status.busy { color: var(--warn); }
+
 .btn {
   border: 1px solid var(--primary);
   background: var(--primary);

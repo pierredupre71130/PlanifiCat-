@@ -16,6 +16,7 @@
 
   function defaultState() {
     return {
+      updatedAt: new Date().toISOString(),
       settings: {
         tolerance: 60,
         marginMin: 5,
@@ -26,6 +27,14 @@
       rangeStart: todayISO(),
       rangeEnd: addDaysISO(todayISO(), 13),
       days: {}, // 'YYYY-MM-DD' -> { absences: [{id,label,start,end}] }
+      sync: {
+        owner: '',
+        repo: '',
+        token: '',
+        path: 'data.json',
+        sha: null,
+        lastSyncedAt: null,
+      },
     };
   }
 
@@ -39,6 +48,7 @@
         ...base,
         ...parsed,
         settings: { ...base.settings, ...(parsed.settings || {}) },
+        sync: { ...base.sync, ...(parsed.sync || {}) },
       };
     } catch (e) {
       console.error('Lecture des données impossible, réinitialisation.', e);
@@ -46,8 +56,12 @@
     }
   }
 
-  function saveState() {
+  // touch=false pour les écritures qui ne concernent que la synchro elle-même
+  // (sha, lastSyncedAt) : elles ne doivent pas redéclencher une synchro.
+  function saveState({ touch = true } = {}) {
+    if (touch) state.updatedAt = new Date().toISOString();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (touch) scheduleAutoSync();
   }
 
   let state = loadState();
@@ -227,6 +241,9 @@
     anchorInputs.hidden = !state.settings.anchorEnabled;
     anchorDate.value = state.settings.anchor.date;
     anchorTime.value = state.settings.anchor.time;
+    document.getElementById('ghOwner').value = state.sync.owner;
+    document.getElementById('ghRepo').value = state.sync.repo;
+    document.getElementById('ghToken').value = state.sync.token;
   }
 
   toleranceInput.addEventListener('change', () => {
@@ -278,7 +295,8 @@
 
   // --- Export / import ---
   document.getElementById('exportBtn').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    // Ne contient jamais le token GitHub, uniquement les données de planning.
+    const blob = new Blob([JSON.stringify(buildExportPayload(), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -294,8 +312,7 @@
     reader.onload = () => {
       try {
         const parsed = JSON.parse(reader.result);
-        const base = defaultState();
-        state = { ...base, ...parsed, settings: { ...base.settings, ...(parsed.settings || {}) } };
+        applyRemotePayload(parsed); // conserve les réglages GitHub déjà en place
         saveState();
         syncSettingsUI();
         renderDaysList();
@@ -307,9 +324,193 @@
     e.target.value = '';
   });
 
+  // --- Synchronisation GitHub ---
+  // Les données sont stockées dans un fichier `data.json` d'un dépôt GitHub
+  // *privé* séparé du code (voir README) — jamais publié via GitHub Pages,
+  // accessible uniquement via l'API avec le token. Le token lui-même n'est
+  // jamais inclus dans ce qui est exporté ou envoyé à GitHub.
+
+  const ghOwnerInput = document.getElementById('ghOwner');
+  const ghRepoInput = document.getElementById('ghRepo');
+  const ghTokenInput = document.getElementById('ghToken');
+  const syncNowBtn = document.getElementById('syncNowBtn');
+  const syncStatusEl = document.getElementById('syncStatus');
+
+  function utf8ToB64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    bytes.forEach((b) => { binary += String.fromCharCode(b); });
+    return btoa(binary);
+  }
+
+  function b64ToUtf8(b64) {
+    const binary = atob(b64.replace(/\n/g, ''));
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+
+  // Ce qui part réellement vers GitHub (ou un export manuel) : jamais les
+  // identifiants de synchro eux-mêmes.
+  function buildExportPayload() {
+    return {
+      updatedAt: state.updatedAt,
+      settings: state.settings,
+      rangeStart: state.rangeStart,
+      rangeEnd: state.rangeEnd,
+      days: state.days,
+    };
+  }
+
+  function applyRemotePayload(payload) {
+    state.updatedAt = payload.updatedAt || new Date().toISOString();
+    state.settings = { ...state.settings, ...(payload.settings || {}) };
+    state.rangeStart = payload.rangeStart || state.rangeStart;
+    state.rangeEnd = payload.rangeEnd || state.rangeEnd;
+    state.days = payload.days || {};
+  }
+
+  function setSyncStatus(kind, message) {
+    syncStatusEl.className = 'sync-status' + (kind ? ' ' + kind : '');
+    syncStatusEl.textContent = message;
+  }
+
+  function formatDateTime(iso) {
+    return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function hasGithubConfig() {
+    return !!(state.sync.owner && state.sync.repo && state.sync.token);
+  }
+
+  async function githubContentsRequest(method, body) {
+    const { owner, repo, path, token } = state.sync;
+    const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeURIComponent(path)}`;
+    return fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      keepalive: method === 'PUT',
+    });
+  }
+
+  async function pullRemote() {
+    const res = await githubContentsRequest('GET');
+    if (res.status === 404) {
+      state.sync.sha = null;
+      return null;
+    }
+    if (!res.ok) {
+      const info = await res.json().catch(() => ({}));
+      throw new Error(info.message || `GitHub a répondu ${res.status}`);
+    }
+    const json = await res.json();
+    state.sync.sha = json.sha;
+    return JSON.parse(b64ToUtf8(json.content));
+  }
+
+  async function pushRemote(payload) {
+    const body = { message: 'Mise à jour PlanifiCat', content: utf8ToB64(JSON.stringify(payload, null, 2)) };
+    if (state.sync.sha) body.sha = state.sync.sha;
+    const res = await githubContentsRequest('PUT', body);
+    if (!res.ok) {
+      const info = await res.json().catch(() => ({}));
+      throw new Error(info.message || `GitHub a répondu ${res.status}`);
+    }
+    const json = await res.json();
+    state.sync.sha = json.content.sha;
+  }
+
+  let syncing = false;
+
+  async function syncNow(trigger) {
+    if (!hasGithubConfig()) {
+      setSyncStatus('', 'Non configuré : renseigne propriétaire, dépôt et token.');
+      return;
+    }
+    if (syncing) return;
+    syncing = true;
+    setSyncStatus('busy', 'Synchronisation en cours…');
+    try {
+      const remote = await pullRemote();
+      const localUpdatedAt = state.updatedAt;
+      const lastSynced = state.sync.lastSyncedAt;
+
+      if (remote && remote.updatedAt && remote.updatedAt !== lastSynced && remote.updatedAt !== localUpdatedAt) {
+        // Les données distantes ont changé ailleurs depuis notre dernière synchro : conflit.
+        const remoteIsNewer = remote.updatedAt > localUpdatedAt;
+        let keepLocal;
+        if (trigger === 'manual') {
+          keepLocal = confirm(
+            `Des données plus récentes existent sur GitHub (${formatDateTime(remote.updatedAt)}).\n\n` +
+            `OK = garder mes données locales et les envoyer (écrase le distant)\n` +
+            `Annuler = charger les données distantes (écrase mes modifs locales non synchronisées)`
+          );
+        } else {
+          keepLocal = !remoteIsNewer;
+        }
+        if (!keepLocal) {
+          applyRemotePayload(remote);
+          state.sync.lastSyncedAt = remote.updatedAt;
+          saveState({ touch: false });
+          syncSettingsUI();
+          renderDaysList();
+          setSyncStatus('ok', `Données distantes chargées — ${formatDateTime(new Date().toISOString())}`);
+          syncing = false;
+          return;
+        }
+      }
+
+      if (!remote || localUpdatedAt !== lastSynced) {
+        const payload = buildExportPayload();
+        await pushRemote(payload);
+        state.sync.lastSyncedAt = payload.updatedAt;
+        saveState({ touch: false });
+      }
+      setSyncStatus('ok', `Synchronisé — ${formatDateTime(new Date().toISOString())}`);
+    } catch (e) {
+      console.error(e);
+      setSyncStatus('error', 'Erreur : ' + e.message);
+    } finally {
+      syncing = false;
+    }
+  }
+
+  let autoSyncTimer = null;
+  function scheduleAutoSync() {
+    if (!hasGithubConfig()) return;
+    clearTimeout(autoSyncTimer);
+    autoSyncTimer = setTimeout(() => syncNow('auto'), 4000);
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && hasGithubConfig()) {
+      clearTimeout(autoSyncTimer);
+      syncNow('auto');
+    }
+  });
+
+  ghOwnerInput.addEventListener('change', () => {
+    state.sync.owner = ghOwnerInput.value.trim();
+    saveState({ touch: false });
+  });
+  ghRepoInput.addEventListener('change', () => {
+    state.sync.repo = ghRepoInput.value.trim();
+    saveState({ touch: false });
+  });
+  ghTokenInput.addEventListener('change', () => {
+    state.sync.token = ghTokenInput.value.trim();
+    saveState({ touch: false });
+  });
+  syncNowBtn.addEventListener('click', () => syncNow('manual'));
+
   // --- Démarrage ---
   syncSettingsUI();
   renderDaysList();
+  if (hasGithubConfig()) syncNow('auto');
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
