@@ -382,6 +382,25 @@
     return !!(state.sync.owner && state.sync.repo && state.sync.token);
   }
 
+  // Permet de partager un lien "?owner=...&repo=...&token=..." pour
+  // pré-remplir la config GitHub sur un nouvel appareil sans tout retaper.
+  // L'URL est nettoyée immédiatement pour ne pas laisser le token trainer
+  // dans l'historique du navigateur.
+  function applyConfigFromUrl() {
+    const params = new URLSearchParams(location.search);
+    const owner = params.get('owner');
+    const repo = params.get('repo');
+    const token = params.get('token');
+    if (!owner && !repo && !token) return;
+    if (owner) state.sync.owner = owner;
+    if (repo) state.sync.repo = repo;
+    if (token) state.sync.token = token;
+    saveState({ touch: false });
+    const url = new URL(location.href);
+    url.search = '';
+    history.replaceState({}, '', url);
+  }
+
   async function githubContentsRequest(method, body) {
     const { owner, repo, path, token } = state.sync;
     const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeURIComponent(path)}`;
@@ -508,6 +527,7 @@
   syncNowBtn.addEventListener('click', () => syncNow('manual'));
 
   // --- Démarrage ---
+  applyConfigFromUrl();
   syncSettingsUI();
   renderDaysList();
   if (hasGithubConfig()) syncNow('auto');
