@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#2f6f5e" />
+<title>PlanifiCat — Horaires d'injection</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <span class="logo">🐾</span>
+    <div>
+      <h1>PlanifiCat</h1>
+      <p class="subtitle">Calcul des horaires d'injection d'insuline</p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="card intro">
+    <p>
+      Indique tes créneaux d'absence (travail, rendez-vous) pour chaque jour.
+      L'appli calcule les 2 horaires d'injection qui restent le plus proche
+      possible de 12h d'écart, en évitant tes absences — et en anticipant
+      les jours suivants quand il faut décaler à l'avance.
+    </p>
+    <p class="disclaimer">
+      ⚠️ Outil d'aide au calcul uniquement : la fréquence, l'écart toléré et la
+      marge de décalage doivent rester ceux validés par l'équipe médicale qui
+      suit le traitement.
+    </p>
+  </section>
+
+  <section class="card" id="settingsCard">
+    <button class="collapsible" id="settingsToggle" type="button" aria-expanded="false">
+      ⚙️ Réglages <span class="chev">▾</span>
+    </button>
+    <div class="collapsible-body" id="settingsBody" hidden>
+      <div class="field-row">
+        <label for="toleranceInput">Tolérance autour de 12h (± minutes)</label>
+        <input type="number" id="toleranceInput" min="0" max="180" step="5" value="60" />
+      </div>
+      <div class="field-row">
+        <label for="marginInput">Marge de sécurité autour des absences (minutes)</label>
+        <input type="number" id="marginInput" min="0" max="60" step="5" value="5" />
+      </div>
+      <div class="field-row">
+        <label for="defaultTimeInput">Horaire de référence par défaut</label>
+        <input type="time" id="defaultTimeInput" value="06:25" />
+      </div>
+      <div class="field-row anchor-row">
+        <label class="checkbox-label">
+          <input type="checkbox" id="anchorEnabled" />
+          Point de départ (dernière injection connue avant le 1er jour)
+        </label>
+        <div class="anchor-inputs" id="anchorInputs" hidden>
+          <input type="date" id="anchorDate" />
+          <input type="time" id="anchorTime" />
+        </div>
+      </div>
+      <div class="field-row buttons-row">
+        <button class="btn secondary" id="exportBtn" type="button">Exporter les données</button>
+        <label class="btn secondary file-btn">
+          Importer
+          <input type="file" id="importInput" accept="application/json" hidden />
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section class="card range-controls">
+    <button class="btn secondary" id="addWeekBtn" type="button">+ 7 jours</button>
+    <button class="btn secondary" id="removeWeekBtn" type="button">− 7 jours</button>
+  </section>
+
+  <section id="daysList"></section>
+</main>
+
+<template id="dayTemplate">
+  <article class="day-card">
+    <header class="day-header">
+      <h2 class="day-title"></h2>
+    </header>
+    <div class="absences"></div>
+    <button class="btn small add-absence" type="button">+ Absence (travail / rdv)</button>
+    <div class="results"></div>
+  </article>
+</template>
+
+<template id="absenceTemplate">
+  <div class="absence-row">
+    <input type="text" class="absence-label" placeholder="Libellé (ex: boulot matin)" />
+    <input type="time" class="absence-start" />
+    <span>→</span>
+    <input type="time" class="absence-end" />
+    <button class="btn icon remove-absence" type="button" aria-label="Supprimer">✕</button>
+  </div>
+</template>
+
+<script src="scheduler.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
