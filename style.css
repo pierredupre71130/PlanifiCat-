@@ -364,7 +364,8 @@ main {
   opacity: 0.75;
 }
 .glucose-control { display: flex; align-items: center; gap: 0.3rem; }
-.reading-inputs input {
+.reading-inputs input,
+.reading-inputs select {
   width: 4.2rem;
   padding: 0.35rem 0.4rem;
   border-radius: 6px;
@@ -375,14 +376,15 @@ main {
   font-weight: 600;
   text-align: center;
 }
+.reading-inputs select { cursor: pointer; }
 .flag-btn {
   border: 1px solid var(--border);
   background: var(--card-bg);
   color: var(--text-muted);
   border-radius: 6px;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  padding: 0.35rem 0.5rem;
+  padding: 0.45rem 0.6rem;
   cursor: pointer;
 }
 .flag-btn.active {

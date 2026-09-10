@@ -294,6 +294,28 @@
   // Ligne "Glycémie / Unités" sous un horaire : la glycémie se saisit soit
   // au clavier numérique, soit via les boutons HI/LO (le clavier numérique
   // du téléphone ne permet pas de taper des lettres).
+  // Liste déroulante plutôt qu'un champ à taper au clavier : sur
+  // téléphone, choisir dans une liste est plus rapide que faire
+  // apparaître un clavier pour une valeur qu'on connaît déjà par cœur.
+  function buildUnitsSelect(value) {
+    const select = document.createElement('select');
+    select.className = 'units-select';
+    select.title = "Nombre d'unités injectées";
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '—';
+    select.appendChild(noneOpt);
+    for (let i = 1; i <= 60; i++) {
+      const v = i / 2; // 0.5, 1, 1.5, ... 30
+      const opt = document.createElement('option');
+      opt.value = String(v);
+      opt.textContent = String(v);
+      select.appendChild(opt);
+    }
+    select.value = value != null ? String(value) : '';
+    return select;
+  }
+
   function buildReadingRow(iso, idx) {
     const reading = getDayData(iso).readings[idx] || { glucose: null, units: null };
     const row = document.createElement('div');
@@ -342,13 +364,7 @@
     const unitsLabel = document.createElement('span');
     unitsLabel.className = 'reading-label';
     unitsLabel.textContent = 'Unités';
-    const unitsInput = document.createElement('input');
-    unitsInput.type = 'number';
-    unitsInput.step = '0.5';
-    unitsInput.min = '0';
-    unitsInput.placeholder = 'U';
-    unitsInput.title = "Nombre d'unités injectées";
-    unitsInput.value = reading.units ?? '';
+    const unitsInput = buildUnitsSelect(reading.units);
     unitsInput.addEventListener('change', () => setReading(iso, idx, 'units', unitsInput.value));
     unitsField.appendChild(unitsLabel);
     unitsField.appendChild(unitsInput);
