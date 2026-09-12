@@ -91,13 +91,16 @@
     return 'a' + Date.now().toString(36) + (uidCounter++).toString(36);
   }
 
-  // Fenêtre glissante fixe (pas de réglage manuel) : toujours "aujourd'hui"
-  // + les 27 jours suivants, recalculée à chaque ouverture de l'app.
+  // Fenêtre glissante fixe (pas de réglage manuel) : 14 jours avant
+  // aujourd'hui (pour pouvoir compléter des relevés en retard) + les 27
+  // jours suivants, recalculée à chaque ouverture de l'app.
   const WINDOW_DAYS = 28;
+  const WINDOW_DAYS_BACK = 14;
   function listDates() {
     const dates = [];
-    let cur = todayISO();
-    for (let i = 0; i < WINDOW_DAYS; i++) {
+    let cur = addDaysISO(todayISO(), -WINDOW_DAYS_BACK);
+    const total = WINDOW_DAYS_BACK + WINDOW_DAYS;
+    for (let i = 0; i < total; i++) {
       dates.push(cur);
       cur = addDaysISO(cur, 1);
     }
@@ -815,13 +818,17 @@
     });
   }
 
+  function scrollChipIntoView(iso, behavior) {
+    const chip = daystripEl.querySelector(`[data-date="${iso}"]`);
+    if (chip) chip.scrollIntoView({ behavior, inline: 'center', block: 'nearest' });
+  }
+
   function selectDate(iso) {
     selectedDate = iso;
     renderDayDetail();
     renderDetailResults(); // le calcul (lastSchedule) existe déjà pour tous les jours, il manquait juste son affichage sur le jour nouvellement sélectionné
     updateStripStatuses();
-    const chip = daystripEl.querySelector(`[data-date="${iso}"]`);
-    if (chip) chip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    scrollChipIntoView(iso, 'smooth');
   }
 
   function renderDayDetail() {
@@ -1149,6 +1156,10 @@
   applyConfigFromUrl();
   syncSettingsUI();
   renderAll();
+  // Le bandeau contient aussi des jours passés désormais : sans ça, l'app
+  // s'ouvrirait scrollée sur le tout premier jour (le plus ancien) au lieu
+  // d'aujourd'hui.
+  scrollChipIntoView(selectedDate, 'auto');
   if (hasGithubConfig()) syncNow('auto');
 
   // Une fois qu'une nouvelle version du service worker prend le contrôle
