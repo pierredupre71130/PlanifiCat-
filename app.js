@@ -439,7 +439,8 @@
       tr.appendChild(dayCell);
 
       const day = getDayData(iso);
-      for (let i = 0; i < 2; i++) {
+
+      function buildInjectionCell(i) {
         const t = times[i];
         const td = document.createElement('td');
         td.className = 'time-cell';
@@ -459,8 +460,12 @@
         } else {
           td.textContent = '—';
         }
-        tr.appendChild(td);
+        return td;
       }
+
+      // Entre les 2 injections plutôt qu'en fin de ligne : se lit dans
+      // l'ordre chronologique de la journée (matin → dextro → soir).
+      tr.appendChild(buildInjectionCell(0));
 
       const extraCell = document.createElement('td');
       extraCell.className = 'notes-cell';
@@ -469,6 +474,8 @@
         ? extraWithValues.map((c) => `${c.time} : ${formatGlucose(c.glucose)}`).join(', ')
         : '';
       tr.appendChild(extraCell);
+
+      tr.appendChild(buildInjectionCell(1));
 
       summaryTableBody.appendChild(tr);
     }
