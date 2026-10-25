@@ -548,8 +548,8 @@
     const marginLeft = 36;
     const marginRight = 16;
     const marginTop = 22;
-    const marginBottom = 26;
-    const height = 200;
+    const marginBottom = 36; // 2 lignes sous le graphe : date + heure du relevé
+    const height = 210;
     const plotHeight = height - marginTop - marginBottom;
     const width = Math.max(320, marginLeft + marginRight + points.length * spacing);
 
@@ -619,11 +619,19 @@
 
       const dayLabel = document.createElementNS(svgNS, 'text');
       dayLabel.setAttribute('x', x);
-      dayLabel.setAttribute('y', height - 6);
+      dayLabel.setAttribute('y', height - 18);
       dayLabel.setAttribute('text-anchor', 'middle');
       dayLabel.setAttribute('class', 'day-label');
       dayLabel.textContent = formatShortDate(p.iso).replace(/^\S+\s/, '');
       g.appendChild(dayLabel);
+
+      const timeLabel = document.createElementNS(svgNS, 'text');
+      timeLabel.setAttribute('x', x);
+      timeLabel.setAttribute('y', height - 6);
+      timeLabel.setAttribute('text-anchor', 'middle');
+      timeLabel.setAttribute('class', 'day-label');
+      timeLabel.textContent = fmtHM(p.minutes);
+      g.appendChild(timeLabel);
 
       glucoseChartEl.appendChild(g);
     });

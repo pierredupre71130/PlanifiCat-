@@ -422,7 +422,7 @@ main {
   background: var(--bg);
   border-radius: 10px;
 }
-#glucoseChart { display: block; height: 200px; }
+#glucoseChart { display: block; height: 210px; }
 #glucoseChart .axis-line { stroke: var(--border); stroke-width: 1; }
 #glucoseChart .axis-label { fill: var(--text-muted); font-size: 10px; }
 #glucoseChart .glucose-line { fill: none; stroke: var(--primary); stroke-width: 2; }
