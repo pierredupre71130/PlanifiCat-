@@ -7,7 +7,7 @@
   // À incrémenter à chaque déploiement (voir l'enregistrement du service
   // worker plus bas) : force une URL différente pour service-worker.js à
   // chaque version, pour éviter qu'il reste bloqué en cache.
-  const APP_VERSION = '5';
+  const APP_VERSION = '6';
 
   // Toutes les dates sont manipulées en UTC pur (Date.UTC / getUTCDate...)
   // pour éviter tout décalage lié au fuseau horaire local : mélanger une
@@ -30,9 +30,14 @@
     return date.toISOString().slice(0, 10);
   }
 
+  // Un état jamais modifié sur cet appareil (téléphone neuf, données
+  // effacées) doit toujours paraître plus ancien que ce qui est sur GitHub :
+  // sinon la 1re synchro enverrait des données vides par-dessus les vraies.
+  const NEVER_MODIFIED = '1970-01-01T00:00:00.000Z';
+
   function defaultState() {
     return {
-      updatedAt: new Date().toISOString(),
+      updatedAt: NEVER_MODIFIED,
       settings: {
         tolerance: 60,
         marginMin: 5,
@@ -1104,7 +1109,9 @@
         // Les données distantes ont changé ailleurs depuis notre dernière synchro : conflit.
         const remoteIsNewer = remote.updatedAt > localUpdatedAt;
         let keepLocal;
-        if (trigger === 'manual') {
+        if (localUpdatedAt === NEVER_MODIFIED) {
+          keepLocal = false; // appareil vierge : rien à protéger, on reprend GitHub sans poser de question
+        } else if (trigger === 'manual') {
           keepLocal = confirm(
             `Des données plus récentes existent sur GitHub (${formatDateTime(remote.updatedAt)}).\n\n` +
             `OK = garder mes données locales et les envoyer (écrase le distant)\n` +
