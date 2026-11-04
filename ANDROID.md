@@ -5,11 +5,15 @@ Le projet Android est déjà prêt dans le dossier `android/`. Il suffit de le c
 ## Créer l'APK (sur PC ou Mac)
 
 1. Installer **Android Studio** (gratuit) : https://developer.android.com/studio
-2. Télécharger ce dépôt (bouton vert **Code → Download ZIP** sur GitHub), puis le décompresser.
-3. Dans Android Studio : **Open** → choisir le dossier **`android`** (pas le dossier racine).
-4. Attendre la fin du « Gradle sync » (barre de progression en bas, plusieurs minutes la première fois ; accepter d'installer les composants proposés).
-5. Menu **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
-6. Une bulle « APK(s) generated » apparaît : cliquer sur **locate**. Le fichier est `app-debug.apk`
+2. Installer **Node.js** (version LTS) : https://nodejs.org
+3. Télécharger ce dépôt (bouton vert **Code → Download ZIP** sur GitHub, en choisissant la branche
+   `claude/app-colleague-request-f6iebv`), puis le décompresser.
+4. Ouvrir un terminal dans le dossier décompressé (la racine, celle qui contient `package.json`) et taper :
+   `npm install` (une seule fois, télécharge la brique Capacitor nécessaire à la compilation).
+5. Dans Android Studio : **Open** → choisir le dossier **`android`** (pas le dossier racine).
+6. Attendre la fin du « Gradle sync » (barre de progression en bas, plusieurs minutes la première fois ; accepter d'installer les composants proposés).
+7. Menu **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
+8. Une bulle « APK(s) generated » apparaît : cliquer sur **locate**. Le fichier est `app-debug.apk`
    (dans `android/app/build/outputs/apk/debug/`).
 
 ## Installer sur le téléphone
