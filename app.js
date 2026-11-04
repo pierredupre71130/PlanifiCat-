@@ -7,7 +7,7 @@
   // À incrémenter à chaque déploiement (voir l'enregistrement du service
   // worker plus bas) : force une URL différente pour service-worker.js à
   // chaque version, pour éviter qu'il reste bloqué en cache.
-  const APP_VERSION = '7';
+  const APP_VERSION = '8';
 
   // Toutes les dates sont manipulées en UTC pur (Date.UTC / getUTCDate...)
   // pour éviter tout décalage lié au fuseau horaire local : mélanger une
@@ -1132,8 +1132,10 @@
         }
       }
 
-      if (!remote || localUpdatedAt !== lastSynced) {
-        const payload = buildExportPayload();
+      // Le bouton manuel envoie toujours, même sans changement, avec un
+      // horodatage pour que GitHub enregistre bien un nouveau commit.
+      if (!remote || trigger === 'manual' || localUpdatedAt !== lastSynced) {
+        const payload = { ...buildExportPayload(), syncedAt: new Date().toISOString() };
         await pushRemote(payload);
         state.sync.lastSyncedAt = payload.updatedAt;
         saveState({ touch: false });
