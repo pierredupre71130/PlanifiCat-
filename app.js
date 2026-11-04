@@ -1229,7 +1229,7 @@
   // recharger la page manuellement une deuxième fois pour la voir, ce
   // qu'on ne peut pas demander à quelqu'un qui ne connaît pas ce détail
   // technique. Le drapeau `refreshed` évite une boucle de rechargement.
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator && !window.Capacitor) {
     window.addEventListener('load', () => {
       // ?v=APP_VERSION (à incrémenter à chaque déploiement) : une URL
       // différente à chaque version garantit un vrai cache-miss réseau

@@ -1,0 +1,18 @@
+{
+  "name": "planificat-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enveloppe Android (Capacitor) de PlanifiCat",
+  "scripts": {
+    "prepare-www": "node scripts/prepare-www.js",
+    "sync": "node scripts/prepare-www.js && cap sync android",
+    "open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

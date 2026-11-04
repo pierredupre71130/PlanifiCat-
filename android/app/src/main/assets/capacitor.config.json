@@ -1,0 +1,11 @@
+{
+	"appId": "fr.planificat.app",
+	"appName": "PlanifiCat",
+	"webDir": "www",
+	"server": {
+		"androidScheme": "https"
+	},
+	"android": {
+		"backgroundColor": "#f6f8f7"
+	}
+}

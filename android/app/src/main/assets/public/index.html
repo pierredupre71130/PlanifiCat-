@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#2f6f5e" />
+<title>PlanifiCat — Horaires d'injection</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="topbar no-print">
+  <div class="topbar-inner">
+    <span class="logo">
+      <svg class="cat-logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+        <path d="M12 4 L20 17 L11.5 19 Z" />
+        <path d="M36 4 L28 17 L36.5 19 Z" />
+        <circle cx="24" cy="27" r="16" />
+        <circle class="cat-eye" cx="18" cy="26" r="2.2" />
+        <circle class="cat-eye" cx="30" cy="26" r="2.2" />
+        <path class="cat-mouth" d="M22 32c.6.8 1.3 1.2 2 1.2s1.4-.4 2-1.2" />
+      </svg>
+    </span>
+    <div>
+      <h1>PlanifiCat</h1>
+      <p class="subtitle">Calcul des horaires d'injection d'insuline</p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="card intro no-print">
+    <button class="collapsible" id="introToggle" type="button" aria-expanded="false">
+      ❓ Comment ça marche <span class="chev">▾</span>
+    </button>
+    <div class="collapsible-body" id="introBody" hidden>
+    <ol class="steps">
+      <li>Pour chaque jour ci-dessous, appuie sur <strong>+ Absence (travail / rdv)</strong> et indique l'heure de début et de fin où tu n'es pas disponible (ex : 06h30 → 14h30 pour un poste du matin).</li>
+      <li>Les 2 horaires d'injection 💉 s'affichent automatiquement en dessous, calculés pour rester autour de 12h d'écart.</li>
+      <li>Un horaire calculé ne te convient pas ? Tape dessus pour le corriger toi-même ("fixé manuellement") : les jours autour se réajustent automatiquement pour rester à ~12h d'écart. Le lien <strong>↺ auto</strong> qui apparaît sous l'horaire modifié permet de revenir au calcul automatique.</li>
+      <li>Jour de repos, sans contrainte ? Laisse-le sans absence : l'appli garde un horaire stable, ou le décale un peu à l'avance si un jour suivant l'impose.</li>
+      <li>Fais glisser le bandeau de jours vers la droite pour voir les jours suivants (jusqu'à 4 semaines à l'avance), ou vers la gauche pour revenir jusqu'à 2 semaines en arrière (pratique pour compléter une glycémie oubliée).</li>
+      <li>Sous chaque horaire, tu peux noter la <strong>glycémie (g/L, ou "HI"/"LO" si le lecteur ne donne pas de chiffre)</strong> et le <strong>nombre d'unités</strong> injectées. <strong>+ Dextro</strong> permet d'ajouter un contrôle de glycémie supplémentaire, en dehors des injections.</li>
+      <li>Tout en bas, <strong>Vue d'ensemble du mois</strong> donne la courbe de glycémie, un tableau avec tous les horaires calculés, et un bouton pour l'imprimer ou l'enregistrer en PDF.</li>
+    </ol>
+    <div class="legend">
+      <span class="legend-item"><svg class="paw-icon dot ok" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>horaire ok</span>
+      <span class="legend-item"><svg class="paw-icon dot warn" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>écart hors tolérance ou horaire de nuit</span>
+      <span class="legend-item"><svg class="paw-icon dot danger" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="16.5" rx="6" ry="5"/><ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/><ellipse cx="9.3" cy="5" rx="2.3" ry="3"/><ellipse cx="14.7" cy="5" rx="2.3" ry="3"/><ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/></svg>aucun horaire possible ce jour</span>
+    </div>
+    </div>
+  </section>
+
+  <section class="card no-print" id="settingsCard">
+    <button class="collapsible" id="settingsToggle" type="button" aria-expanded="false">
+      ⚙️ Réglages <span class="chev">▾</span>
+    </button>
+    <div class="collapsible-body" id="settingsBody" hidden>
+      <p class="hint">
+        Ces réglages ajustent la façon dont les horaires d'injection sont
+        calculés. Les valeurs déjà en place conviennent normalement — n'y
+        touche que si le médecin donne une consigne différente (un autre
+        écart toléré, une autre marge...).
+      </p>
+      <div class="field-row">
+        <label for="toleranceInput">Tolérance autour de 12h (± minutes)</label>
+        <input type="number" id="toleranceInput" min="0" max="180" step="5" value="60" />
+      </div>
+      <div class="field-row">
+        <label for="marginInput">Marge de sécurité autour des absences (minutes)</label>
+        <input type="number" id="marginInput" min="0" max="60" step="5" value="5" />
+      </div>
+      <div class="field-row">
+        <label for="defaultTimeInput">Horaire de référence par défaut</label>
+        <input type="time" id="defaultTimeInput" value="06:25" />
+      </div>
+      <div class="field-row anchor-row">
+        <label class="checkbox-label">
+          <input type="checkbox" id="anchorEnabled" />
+          Point de départ (dernière injection connue avant le 1er jour)
+        </label>
+        <div class="anchor-inputs" id="anchorInputs" hidden>
+          <input type="date" id="anchorDate" />
+          <input type="time" id="anchorTime" />
+        </div>
+      </div>
+      <div class="field-row anchor-row">
+        <label class="checkbox-label">
+          <input type="checkbox" id="avoidNightEnabled" />
+          Éviter les horaires de nuit si possible
+        </label>
+        <div class="anchor-inputs" id="avoidNightInputs" hidden>
+          <input type="time" id="avoidNightStart" />
+          <span>→</span>
+          <input type="time" id="avoidNightEnd" />
+        </div>
+      </div>
+      <div class="field-row buttons-row">
+        <button class="btn secondary" id="exportBtn" type="button">Exporter les données</button>
+        <label class="btn secondary file-btn">
+          Importer
+          <input type="file" id="importInput" accept="application/json" hidden />
+        </label>
+      </div>
+      <div class="field-row" style="flex-direction:column;align-items:stretch;gap:8px">
+        <strong>Changer de téléphone sans fichier</strong>
+        <div class="field-row buttons-row">
+          <button class="btn secondary" id="copyDataBtn" type="button">📋 Copier mes données</button>
+        </div>
+        <textarea id="pasteData" rows="3" placeholder="Sur le nouveau téléphone : colle ici le texte copié, puis touche « Charger »."></textarea>
+        <div class="field-row buttons-row">
+          <button class="btn secondary" id="pasteDataBtn" type="button">Charger les données collées</button>
+        </div>
+        <p class="sync-status" id="copyStatus" hidden></p>
+      </div>
+
+      <hr class="sep" />
+      <h3 class="sub-heading">☁️ Synchronisation GitHub</h3>
+      <p class="hint">
+        Sauvegarde tes données sur un dépôt GitHub privé pour ne pas les
+        perdre et les retrouver sur un autre appareil.
+      </p>
+      <p class="hint">
+        La synchronisation se fait <strong>automatiquement</strong> :
+        quelques secondes après chaque modification, et à chaque ouverture
+        de l'app (qui va aussi chercher les dernières données au cas où
+        elles auraient changé ailleurs). Le bouton
+        <strong>Synchroniser maintenant</strong> ci-dessous reste
+        disponible pour forcer une synchro immédiate (ex : juste avant de
+        changer d'appareil), mais il n'est pas obligatoire au quotidien.
+      </p>
+      <div class="field-row">
+        <label for="ghOwner">Propriétaire du dépôt</label>
+        <p class="field-hint">À ne pas modifier</p>
+        <input type="text" id="ghOwner" placeholder="ex : pierredupre71130" autocomplete="off" />
+      </div>
+      <div class="field-row">
+        <label for="ghRepo">Nom du dépôt privé de données</label>
+        <p class="field-hint">À ne pas modifier</p>
+        <input type="text" id="ghRepo" placeholder="ex : planificat-data" autocomplete="off" />
+      </div>
+      <div class="field-row">
+        <label for="ghToken">Token d'accès (fine-grained, permission Contents)</label>
+        <p class="field-hint">À ne pas modifier</p>
+        <input type="password" id="ghToken" placeholder="github_pat_..." autocomplete="off" />
+      </div>
+      <div class="field-row buttons-row">
+        <button class="btn secondary" id="syncNowBtn" type="button">Synchroniser maintenant</button>
+      </div>
+      <p class="sync-status" id="syncStatus">Non configuré.</p>
+    </div>
+  </section>
+
+  <section class="card strip-card no-print">
+    <div class="daystrip-scroll">
+      <div class="daystrip" id="daystrip"></div>
+    </div>
+  </section>
+
+  <section id="dayDetail" class="no-print"></section>
+
+  <section class="card">
+    <button class="collapsible no-print" id="summaryToggle" type="button" aria-expanded="false">
+      📋 Vue d'ensemble du mois (pour imprimer / PDF) <span class="chev">▾</span>
+    </button>
+    <div class="collapsible-body" id="summaryBody" hidden>
+      <p class="hint no-print">
+        Tous les horaires calculés, en un coup d'œil. Le bouton ci-dessous
+        ouvre l'impression : choisis <strong>Enregistrer au format
+        PDF</strong> comme imprimante pour en garder une copie ou
+        l'imprimer.
+      </p>
+      <div class="field-row no-print">
+        <label>Période affichée / imprimée</label>
+        <div class="anchor-inputs">
+          <input type="date" id="summaryRangeStart" />
+          <span>→</span>
+          <input type="date" id="summaryRangeEnd" />
+        </div>
+      </div>
+      <button class="btn small secondary no-print" id="summaryRangeReset" type="button">Revenir aux 4 semaines par défaut</button>
+      <button class="btn secondary no-print" id="printBtn" type="button">Imprimer / Enregistrer en PDF</button>
+      <div class="print-only print-title">
+        <h2>PlanifiCat — Horaires d'injection</h2>
+        <p id="printRange"></p>
+      </div>
+      <h3 class="sub-heading">Courbe de glycémie</h3>
+      <div class="chart-wrap" id="chartWrap">
+        <svg id="glucoseChart" aria-label="Courbe de glycémie"></svg>
+      </div>
+      <p class="hint no-print" id="chartEmptyHint">
+        Renseigne une glycémie sous un horaire (ou ajoute un dextro) pour
+        voir la courbe apparaître ici.
+      </p>
+      <div class="summary-table-wrap">
+        <table class="summary-table">
+          <thead><tr><th>Jour</th><th>Injection 1</th><th>Dextro</th><th>Injection 2</th></tr></thead>
+          <tbody id="summaryTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<template id="chipTemplate">
+  <button type="button" class="day-chip">
+    <span class="chip-weekday"></span>
+    <span class="chip-num"></span>
+    <svg class="paw-icon chip-indicator" viewBox="0 0 24 24" aria-hidden="true">
+      <ellipse cx="12" cy="16.5" rx="6" ry="5"/>
+      <ellipse cx="4.2" cy="9.5" rx="2.4" ry="3.1"/>
+      <ellipse cx="9.3" cy="5" rx="2.3" ry="3"/>
+      <ellipse cx="14.7" cy="5" rx="2.3" ry="3"/>
+      <ellipse cx="19.8" cy="9.5" rx="2.4" ry="3.1"/>
+    </svg>
+  </button>
+</template>
+
+<template id="dayTemplate">
+  <article class="day-card">
+    <header class="day-header">
+      <h2 class="day-title"></h2>
+    </header>
+    <div class="absences"></div>
+    <button class="btn small add-absence" type="button">+ Absence (travail / rdv)</button>
+    <div class="results"></div>
+    <div class="extra-checks"></div>
+    <button class="btn small secondary add-extra-check" type="button">+ Dextro (contrôle supplémentaire)</button>
+  </article>
+</template>
+
+<template id="absenceTemplate">
+  <div class="absence-row">
+    <input type="text" class="absence-label" placeholder="Libellé (ex: boulot matin)" />
+    <input type="time" class="absence-start" />
+    <span>→</span>
+    <input type="time" class="absence-end" />
+    <button class="btn icon remove-absence" type="button" aria-label="Supprimer">✕</button>
+  </div>
+</template>
+
+<template id="extraCheckTemplate">
+  <div class="extra-check-row">
+    <span class="chip-emoji">🩸</span>
+    <input type="time" class="extra-check-time" />
+    <input type="text" inputmode="decimal" class="extra-check-glucose" placeholder="g/L" title="Glycémie en g/L (1.20 ou 1,20)" />
+    <button type="button" class="flag-btn extra-check-hi" data-flag="HI">HI</button>
+    <button type="button" class="flag-btn extra-check-lo" data-flag="LO">LO</button>
+    <button class="btn icon remove-extra-check" type="button" aria-label="Supprimer">✕</button>
+  </div>
+</template>
+
+<script src="scheduler.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1260 @@
+(function () {
+  'use strict';
+
+  const STORAGE_KEY = 'planificat-data-v1';
+  const DAY_MS = 86400000;
+
+  // À incrémenter à chaque déploiement (voir l'enregistrement du service
+  // worker plus bas) : force une URL différente pour service-worker.js à
+  // chaque version, pour éviter qu'il reste bloqué en cache.
+  const APP_VERSION = '9';
+
+  // Toutes les dates sont manipulées en UTC pur (Date.UTC / getUTCDate...)
+  // pour éviter tout décalage lié au fuseau horaire local : mélanger une
+  // lecture locale (ex: new Date().toISOString()) avec une écriture UTC
+  // (ou l'inverse) fait dériver le calcul de +/-1 jour selon l'heure et le
+  // fuseau de l'appareil, ce qui peut carrément bloquer "jour + 1" sur le
+  // même jour.
+  function todayISO() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function addDaysISO(iso, n) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    date.setUTCDate(date.getUTCDate() + n);
+    return date.toISOString().slice(0, 10);
+  }
+
+  // Un état jamais modifié sur cet appareil (téléphone neuf, données
+  // effacées) doit toujours paraître plus ancien que ce qui est sur GitHub :
+  // sinon la 1re synchro enverrait des données vides par-dessus les vraies.
+  const NEVER_MODIFIED = '1970-01-01T00:00:00.000Z';
+
+  function defaultState() {
+    return {
+      updatedAt: NEVER_MODIFIED,
+      settings: {
+        tolerance: 60,
+        marginMin: 5,
+        defaultTime: '06:25',
+        anchorEnabled: false,
+        anchor: { date: todayISO(), time: '06:25' },
+        avoidNightEnabled: true,
+        avoidNightStart: '23:00',
+        avoidNightEnd: '05:00',
+      },
+      days: {}, // 'YYYY-MM-DD' -> { absences: [{id,label,start,end}] }
+      // Période affichée/imprimée dans "Vue d'ensemble du mois", distincte
+      // de la fenêtre glissante du bandeau : vide = par défaut (4 semaines).
+      summaryRange: { start: '', end: '' },
+      sync: {
+        owner: '',
+        repo: '',
+        token: '',
+        path: 'data.json',
+        sha: null,
+        lastSyncedAt: null,
+      },
+    };
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      const base = defaultState();
+      return {
+        ...base,
+        ...parsed,
+        settings: { ...base.settings, ...(parsed.settings || {}) },
+        summaryRange: { ...base.summaryRange, ...(parsed.summaryRange || {}) },
+        sync: { ...base.sync, ...(parsed.sync || {}) },
+      };
+    } catch (e) {
+      console.error('Lecture des données impossible, réinitialisation.', e);
+      return defaultState();
+    }
+  }
+
+  // touch=false pour les écritures qui ne concernent que la synchro elle-même
+  // (sha, lastSyncedAt) : elles ne doivent pas redéclencher une synchro.
+  function saveState({ touch = true } = {}) {
+    if (touch) state.updatedAt = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (touch) scheduleAutoSync();
+  }
+
+  let state = loadState();
+  let uidCounter = 1;
+  function uid() {
+    return 'a' + Date.now().toString(36) + (uidCounter++).toString(36);
+  }
+
+  // Fenêtre glissante fixe (pas de réglage manuel) : 14 jours avant
+  // aujourd'hui (pour pouvoir compléter des relevés en retard) + les 27
+  // jours suivants, recalculée à chaque ouverture de l'app.
+  const WINDOW_DAYS = 28;
+  const WINDOW_DAYS_BACK = 14;
+  function listDates() {
+    const dates = [];
+    let cur = addDaysISO(todayISO(), -WINDOW_DAYS_BACK);
+    const total = WINDOW_DAYS_BACK + WINDOW_DAYS;
+    for (let i = 0; i < total; i++) {
+      dates.push(cur);
+      cur = addDaysISO(cur, 1);
+    }
+    return dates;
+  }
+
+  function datesBetween(start, end) {
+    const dates = [];
+    let cur = start;
+    let guard = 0;
+    while (cur <= end && guard < 400) {
+      dates.push(cur);
+      cur = addDaysISO(cur, 1);
+      guard++;
+    }
+    return dates;
+  }
+
+  // Période affichée dans la vue d'ensemble / le PDF : la sélection
+  // manuelle si elle est valide, sinon la même fenêtre que le bandeau.
+  // Une seule des deux dates renseignée doit quand même changer quelque
+  // chose immédiatement (sinon on dirait que le réglage ne fait rien tant
+  // que les deux champs n'ont pas été remplis) : on complète alors avec
+  // la même durée par défaut (4 semaines) à partir de la date donnée.
+  function listSummaryDates() {
+    let { start, end } = state.summaryRange || {};
+    if (!start && !end) return listDates();
+    if (start && !end) end = addDaysISO(start, WINDOW_DAYS - 1);
+    if (end && !start) start = addDaysISO(end, -(WINDOW_DAYS - 1));
+    if (start > end) [start, end] = [end, start];
+    return datesBetween(start, end);
+  }
+
+  const WEEKDAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+  const WEEKDAYS_SHORT = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
+  const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const MONTHS_SHORT = ['jan.', 'fév.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+  function formatDayTitle(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  }
+
+  function formatShortDate(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    return `${WEEKDAYS_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+  }
+
+  const daystripEl = document.getElementById('daystrip');
+  const dayDetailEl = document.getElementById('dayDetail');
+  const chipTemplate = document.getElementById('chipTemplate');
+  const dayTemplate = document.getElementById('dayTemplate');
+  const absenceTemplate = document.getElementById('absenceTemplate');
+
+  // Jour actuellement affiché dans le panneau de détail sous le bandeau.
+  let selectedDate = null;
+  function ensureSelectedDate() {
+    const dates = listDates();
+    if (!dates.includes(selectedDate)) {
+      selectedDate = dates.includes(todayISO()) ? todayISO() : dates[0];
+    }
+  }
+
+  // Centralise les valeurs par défaut : garantit la forme complète d'un
+  // jour même pour une entrée ancienne (créée avant l'ajout d'un champ).
+  function getDayData(iso) {
+    if (!state.days[iso]) state.days[iso] = {};
+    const day = state.days[iso];
+    if (!Array.isArray(day.absences)) day.absences = [];
+    if (!Array.isArray(day.overrides)) day.overrides = [null, null];
+    if (!Array.isArray(day.readings)) day.readings = [{ glucose: null, units: null }, { glucose: null, units: null }];
+    if (!Array.isArray(day.extraChecks)) day.extraChecks = [];
+    return day;
+  }
+
+  // Union du bandeau et de la période choisie pour la vue d'ensemble :
+  // celle-ci peut déborder de la fenêtre glissante par défaut (ex: une
+  // période choisie plus longue), le calcul doit alors couvrir les deux.
+  function scheduleWindowDates() {
+    return Array.from(new Set([...listDates(), ...listSummaryDates()])).sort();
+  }
+
+  function buildSchedulerInput() {
+    return scheduleWindowDates().map((iso) => {
+      const day = getDayData(iso);
+      return {
+        date: iso,
+        absences: day.absences.filter((a) => a.start && a.end),
+        overrides: day.overrides,
+      };
+    });
+  }
+
+  // Fixe ou libère manuellement l'horaire du créneau `slotIndex` (0 ou 1)
+  // d'un jour. `time` à null repasse ce créneau en calcul automatique.
+  function setOverride(iso, slotIndex, time) {
+    const day = getDayData(iso);
+    day.overrides[slotIndex] = time;
+    saveState();
+    recompute();
+  }
+
+  // Glycémie/unités ne changent pas les horaires calculés : pas besoin de
+  // relancer le calcul (recompute), juste de rafraîchir ce qui les affiche.
+  function refreshTracking() {
+    renderDetailResults(); // pour l'état actif (pressé) des boutons HI/LO
+    renderSummaryTable();
+    renderGlucoseChart();
+  }
+
+  function parseNumberOrNull(raw) {
+    const value = raw === '' || raw == null ? null : Number(raw);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  // La glycémie accepte aussi "HI"/"LO" : ce que le lecteur affiche quand
+  // le taux dépasse la plage qu'il sait mesurer (trop haut ou trop bas).
+  function parseGlucoseValue(raw) {
+    const trimmed = (raw || '').trim();
+    if (trimmed === '') return null;
+    const upper = trimmed.toUpperCase();
+    if (upper === 'HI' || upper === 'LO') return upper;
+    const num = Number(trimmed.replace(',', '.'));
+    return Number.isFinite(num) ? num : null;
+  }
+
+  function formatGlucose(value) {
+    return typeof value === 'string' ? value : `${value} g/L`;
+  }
+
+  function setReading(iso, slotIndex, field, rawValue) {
+    const day = getDayData(iso);
+    day.readings[slotIndex][field] = field === 'glucose' ? parseGlucoseValue(rawValue) : parseNumberOrNull(rawValue);
+    saveState();
+    refreshTracking();
+  }
+
+  function buildSettings() {
+    const s = state.settings;
+    const settings = {
+      tolerance: Number(s.tolerance) || 60,
+      marginMin: Number(s.marginMin) || 0,
+      defaultTime: s.defaultTime || '06:25',
+    };
+    if (s.anchorEnabled && s.anchor && s.anchor.time) {
+      settings.anchor = { date: s.anchor.date, time: s.anchor.time };
+    }
+    if (s.avoidNightEnabled && s.avoidNightStart && s.avoidNightEnd) {
+      settings.avoidNightStart = s.avoidNightStart;
+      settings.avoidNightEnd = s.avoidNightEnd;
+    }
+    return settings;
+  }
+
+  let lastSchedule = [];
+
+  function recompute() {
+    const days = buildSchedulerInput();
+    lastSchedule = days.length ? computeSchedule(days, buildSettings()) : [];
+    updateStripStatuses();
+    renderDetailResults();
+    renderSummaryTable();
+    renderGlucoseChart();
+  }
+
+  function scheduleByDate() {
+    const byDate = {};
+    for (const d of lastSchedule) byDate[d.date] = d.times;
+    return byDate;
+  }
+
+  function minutesToHM(min) {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  function renderDetailResults() {
+    const card = dayDetailEl.querySelector(`[data-date="${selectedDate}"]`);
+    if (!card) return;
+    const resultsEl = card.querySelector('.results');
+    resultsEl.innerHTML = '';
+    const times = scheduleByDate()[selectedDate] || [];
+    times.forEach((t, idx) => {
+      const isManual = t.warnings.includes('manuel');
+      const chip = document.createElement('div');
+      let cls = 'result-chip';
+      if (t.warnings.includes('creneau-impossible')) cls += ' danger';
+      else if (t.warnings.includes('ecart-hors-tolerance') || t.warnings.includes('nuit')) cls += ' warn';
+      if (isManual) cls += ' manual';
+      chip.className = cls;
+
+      let noteText = t.gapFromPrevLabel ? `écart ${t.gapFromPrevLabel}` : '';
+      if (t.warnings.includes('creneau-impossible')) noteText += ' · créneau impossible !';
+      else if (t.warnings.includes('nuit')) noteText += ' · horaire de nuit';
+      if (isManual) noteText += ' · fixé manuellement';
+
+      const timeRow = document.createElement('div');
+      timeRow.className = 'chip-time-row';
+
+      const label = document.createElement('span');
+      label.className = 'chip-emoji';
+      label.textContent = '💉';
+
+      const input = document.createElement('input');
+      input.type = 'time';
+      input.className = 'result-time-input';
+      input.value = minutesToHM(t.minutes);
+      input.addEventListener('change', () => setOverride(selectedDate, idx, input.value));
+
+      const gapSpan = document.createElement('span');
+      gapSpan.className = 'gap';
+      gapSpan.textContent = noteText;
+
+      timeRow.appendChild(label);
+      timeRow.appendChild(input);
+      timeRow.appendChild(gapSpan);
+
+      if (isManual) {
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.className = 'reset-override';
+        resetBtn.title = 'Revenir au calcul automatique';
+        resetBtn.textContent = '↺ auto';
+        resetBtn.addEventListener('click', () => setOverride(selectedDate, idx, null));
+        timeRow.appendChild(resetBtn);
+      }
+
+      chip.appendChild(timeRow);
+      chip.appendChild(buildReadingRow(selectedDate, idx));
+      resultsEl.appendChild(chip);
+    });
+  }
+
+  // Ligne "Glycémie / Unités" sous un horaire : la glycémie se saisit soit
+  // au clavier numérique, soit via les boutons HI/LO (le clavier numérique
+  // du téléphone ne permet pas de taper des lettres).
+  // Liste déroulante plutôt qu'un champ à taper au clavier : sur
+  // téléphone, choisir dans une liste est plus rapide que faire
+  // apparaître un clavier pour une valeur qu'on connaît déjà par cœur.
+  function buildUnitsSelect(value) {
+    const select = document.createElement('select');
+    select.className = 'units-select';
+    select.title = "Nombre d'unités injectées";
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '—';
+    select.appendChild(noneOpt);
+    for (let i = 1; i <= 16; i++) {
+      const v = i / 2; // 0.5, 1, 1.5, ... 8
+      const opt = document.createElement('option');
+      opt.value = String(v);
+      opt.textContent = String(v);
+      select.appendChild(opt);
+    }
+    select.value = value != null ? String(value) : '';
+    return select;
+  }
+
+  function buildReadingRow(iso, idx) {
+    const reading = getDayData(iso).readings[idx] || { glucose: null, units: null };
+    const row = document.createElement('div');
+    row.className = 'reading-inputs';
+
+    const glucoseField = document.createElement('div');
+    glucoseField.className = 'reading-field';
+    const glucoseLabel = document.createElement('span');
+    glucoseLabel.className = 'reading-label';
+    glucoseLabel.textContent = 'Glycémie';
+    const glucoseControl = document.createElement('div');
+    glucoseControl.className = 'glucose-control';
+
+    // type="text", pas "number" : un champ number tape littéralement la
+    // virgule d'un "1,20" au lieu de la refuser ou de la convertir (testé :
+    // ça devient silencieusement "120"). parseGlucoseValue() gère la
+    // conversion virgule/point elle-même à la validation.
+    const glucoseInput = document.createElement('input');
+    glucoseInput.type = 'text';
+    glucoseInput.inputMode = 'decimal';
+    glucoseInput.placeholder = 'g/L';
+    glucoseInput.title = 'Glycémie en g/L (1.20 ou 1,20)';
+    glucoseInput.value = typeof reading.glucose === 'number' ? reading.glucose : '';
+    glucoseInput.addEventListener('change', () => setReading(iso, idx, 'glucose', glucoseInput.value));
+
+    const hiBtn = document.createElement('button');
+    hiBtn.type = 'button';
+    hiBtn.className = 'flag-btn' + (reading.glucose === 'HI' ? ' active' : '');
+    hiBtn.textContent = 'HI';
+    hiBtn.title = 'Glycémie trop haute pour être mesurée par le lecteur';
+    hiBtn.addEventListener('click', () => setReading(iso, idx, 'glucose', reading.glucose === 'HI' ? '' : 'HI'));
+
+    const loBtn = document.createElement('button');
+    loBtn.type = 'button';
+    loBtn.className = 'flag-btn' + (reading.glucose === 'LO' ? ' active' : '');
+    loBtn.textContent = 'LO';
+    loBtn.title = 'Glycémie trop basse pour être mesurée par le lecteur';
+    loBtn.addEventListener('click', () => setReading(iso, idx, 'glucose', reading.glucose === 'LO' ? '' : 'LO'));
+
+    glucoseControl.appendChild(glucoseInput);
+    glucoseControl.appendChild(hiBtn);
+    glucoseControl.appendChild(loBtn);
+    glucoseField.appendChild(glucoseLabel);
+    glucoseField.appendChild(glucoseControl);
+
+    const unitsField = document.createElement('div');
+    unitsField.className = 'reading-field';
+    const unitsLabel = document.createElement('span');
+    unitsLabel.className = 'reading-label';
+    unitsLabel.textContent = 'Unités';
+    const unitsInput = buildUnitsSelect(reading.units);
+    unitsInput.addEventListener('change', () => setReading(iso, idx, 'units', unitsInput.value));
+    unitsField.appendChild(unitsLabel);
+    unitsField.appendChild(unitsInput);
+
+    row.appendChild(glucoseField);
+    row.appendChild(unitsField);
+    return row;
+  }
+
+  const summaryTableBody = document.getElementById('summaryTableBody');
+  const printRangeEl = document.getElementById('printRange');
+
+  function renderSummaryTable() {
+    const byDate = scheduleByDate();
+    const dates = listSummaryDates();
+    summaryTableBody.innerHTML = '';
+    for (const iso of dates) {
+      const times = byDate[iso] || [];
+      const tr = document.createElement('tr');
+      const hasDanger = times.some((t) => t.warnings.includes('creneau-impossible'));
+      const hasWarn = times.some((t) => t.warnings.includes('ecart-hors-tolerance') || t.warnings.includes('nuit'));
+      if (hasDanger) tr.className = 'status-danger';
+      else if (hasWarn) tr.className = 'status-warn';
+
+      const dayCell = document.createElement('td');
+      dayCell.textContent = formatShortDate(iso);
+      tr.appendChild(dayCell);
+
+      const day = getDayData(iso);
+
+      function buildInjectionCell(i) {
+        const t = times[i];
+        const td = document.createElement('td');
+        td.className = 'time-cell';
+        if (t) {
+          const notes = [];
+          if (t.warnings.includes('creneau-impossible')) notes.push('impossible');
+          else if (t.warnings.includes('nuit')) notes.push('nuit');
+          const reading = day.readings[i] || {};
+          if (reading.glucose != null) notes.push(formatGlucose(reading.glucose));
+          if (reading.units != null) notes.push(`${reading.units} U`);
+          // "manuel" n'apparaît plus ici du tout (ni écran ni impression) :
+          // encombrant dans ce tableau récapitulatif. Reste visible dans le
+          // panneau du jour, où c'est utile de savoir qu'on édite un
+          // horaire fixé à la main.
+          const noteHtml = notes.length ? `<span class="cell-note">${notes.join(' · ')}</span>` : '';
+          td.innerHTML = `${t.time}${noteHtml}`;
+        } else {
+          td.textContent = '—';
+        }
+        return td;
+      }
+
+      // Entre les 2 injections plutôt qu'en fin de ligne : se lit dans
+      // l'ordre chronologique de la journée (matin → dextro → soir).
+      tr.appendChild(buildInjectionCell(0));
+
+      const extraCell = document.createElement('td');
+      extraCell.className = 'notes-cell';
+      const extraWithValues = day.extraChecks.filter((c) => c.time && c.glucose != null);
+      extraCell.textContent = extraWithValues.length
+        ? extraWithValues.map((c) => `${c.time} : ${formatGlucose(c.glucose)}`).join(', ')
+        : '';
+      tr.appendChild(extraCell);
+
+      tr.appendChild(buildInjectionCell(1));
+
+      summaryTableBody.appendChild(tr);
+    }
+    if (dates.length) {
+      printRangeEl.textContent = `Du ${formatDayTitle(dates[0])} au ${formatDayTitle(dates[dates.length - 1])}`;
+    }
+  }
+
+  // --- Courbe de glycémie ---
+  const glucoseChartEl = document.getElementById('glucoseChart');
+  const chartEmptyHint = document.getElementById('chartEmptyHint');
+
+  function parseTimeToMinutes(hm) {
+    const [h, m] = hm.split(':').map(Number);
+    return h * 60 + m;
+  }
+
+  function collectGlucosePoints() {
+    const byDate = scheduleByDate();
+    const points = [];
+    listSummaryDates().forEach((iso, dayIdx) => {
+      const day = getDayData(iso);
+      const times = byDate[iso] || [];
+      times.forEach((t, i) => {
+        const reading = day.readings[i];
+        if (reading && reading.glucose != null) {
+          points.push({ iso, dayIdx, minutes: t.minutes, value: reading.glucose, units: reading.units, isExtra: false });
+        }
+      });
+      day.extraChecks.forEach((c) => {
+        if (c.time && c.glucose != null) {
+          points.push({ iso, dayIdx, minutes: parseTimeToMinutes(c.time), value: c.glucose, units: null, isExtra: true });
+        }
+      });
+    });
+    points.sort((a, b) => a.dayIdx - b.dayIdx || a.minutes - b.minutes);
+    return points;
+  }
+
+  function renderGlucoseChart() {
+    const points = collectGlucosePoints();
+    glucoseChartEl.innerHTML = '';
+    if (points.length === 0) {
+      // .hidden (propriété IDL) ne se reflète pas de façon fiable sur les
+      // éléments SVG dans tous les navigateurs : on manipule l'attribut
+      // directement plutôt que de compter dessus.
+      glucoseChartEl.setAttribute('hidden', '');
+      chartEmptyHint.removeAttribute('hidden');
+      return;
+    }
+    glucoseChartEl.removeAttribute('hidden');
+    chartEmptyHint.setAttribute('hidden', '');
+
+    // HI/LO (glycémie hors plage mesurable par le lecteur) n'ont pas de
+    // valeur numérique : ignorés pour calculer l'échelle, mais toujours
+    // affichés, épinglés en haut/bas du graphique.
+    const numericValues = points.map((p) => p.value).filter((v) => typeof v === 'number');
+    let min = numericValues.length ? Math.min(...numericValues) : 0.7;
+    let max = numericValues.length ? Math.max(...numericValues) : 1.4;
+    if (min === max) {
+      min -= 0.3;
+      max += 0.3;
+    }
+    const pad = (max - min) * 0.2;
+    min -= pad;
+    max += pad;
+
+    const spacing = 55;
+    const marginLeft = 36;
+    const marginRight = 16;
+    const marginTop = 22;
+    const marginBottom = 36; // 2 lignes sous le graphe : date + heure du relevé
+    const height = 210;
+    const plotHeight = height - marginTop - marginBottom;
+    const width = Math.max(320, marginLeft + marginRight + points.length * spacing);
+
+    const xFor = (i) => marginLeft + i * spacing;
+    const yFor = (v) => marginTop + plotHeight - ((v - min) / (max - min)) * plotHeight;
+    // HI épinglé tout en haut, LO tout en bas : hors échelle par nature.
+    const yForPoint = (p) => (p.value === 'HI' ? marginTop : p.value === 'LO' ? marginTop + plotHeight : yFor(p.value));
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    glucoseChartEl.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    glucoseChartEl.setAttribute('width', width);
+    glucoseChartEl.setAttribute('height', height);
+
+    [min + pad, (min + max) / 2, max - pad].forEach((v) => {
+      const y = yFor(v);
+      const line = document.createElementNS(svgNS, 'line');
+      line.setAttribute('x1', marginLeft - 6);
+      line.setAttribute('x2', width - marginRight);
+      line.setAttribute('y1', y);
+      line.setAttribute('y2', y);
+      line.setAttribute('class', 'axis-line');
+      glucoseChartEl.appendChild(line);
+
+      const label = document.createElementNS(svgNS, 'text');
+      label.setAttribute('x', 2);
+      label.setAttribute('y', y + 3);
+      label.setAttribute('class', 'axis-label');
+      label.textContent = v.toFixed(2);
+      glucoseChartEl.appendChild(label);
+    });
+
+    const polyline = document.createElementNS(svgNS, 'polyline');
+    polyline.setAttribute('class', 'glucose-line');
+    polyline.setAttribute('points', points.map((p, i) => `${xFor(i)},${yForPoint(p)}`).join(' '));
+    glucoseChartEl.appendChild(polyline);
+
+    points.forEach((p, i) => {
+      const x = xFor(i);
+      const y = yForPoint(p);
+      const isFlag = typeof p.value === 'string';
+      const g = document.createElementNS(svgNS, 'g');
+      g.setAttribute('class', 'glucose-point' + (p.isExtra ? ' extra' : '') + (isFlag ? ' flag' : ''));
+
+      const circle = document.createElementNS(svgNS, 'circle');
+      circle.setAttribute('cx', x);
+      circle.setAttribute('cy', y);
+      circle.setAttribute('r', 4);
+      g.appendChild(circle);
+
+      const valueLabel = document.createElementNS(svgNS, 'text');
+      valueLabel.setAttribute('x', x);
+      valueLabel.setAttribute('y', y - 8);
+      valueLabel.setAttribute('text-anchor', 'middle');
+      valueLabel.setAttribute('class', 'glucose-value');
+      valueLabel.textContent = p.value;
+      g.appendChild(valueLabel);
+
+      if (p.units != null) {
+        const unitsLabel = document.createElementNS(svgNS, 'text');
+        unitsLabel.setAttribute('x', x);
+        unitsLabel.setAttribute('y', y + 17);
+        unitsLabel.setAttribute('text-anchor', 'middle');
+        unitsLabel.setAttribute('class', 'glucose-units');
+        unitsLabel.textContent = `${p.units}U`;
+        g.appendChild(unitsLabel);
+      }
+
+      const dayLabel = document.createElementNS(svgNS, 'text');
+      dayLabel.setAttribute('x', x);
+      dayLabel.setAttribute('y', height - 18);
+      dayLabel.setAttribute('text-anchor', 'middle');
+      dayLabel.setAttribute('class', 'day-label');
+      dayLabel.textContent = formatShortDate(p.iso).replace(/^\S+\s/, '');
+      g.appendChild(dayLabel);
+
+      const timeLabel = document.createElementNS(svgNS, 'text');
+      timeLabel.setAttribute('x', x);
+      timeLabel.setAttribute('y', height - 6);
+      timeLabel.setAttribute('text-anchor', 'middle');
+      timeLabel.setAttribute('class', 'day-label');
+      timeLabel.textContent = fmtHM(p.minutes);
+      g.appendChild(timeLabel);
+
+      glucoseChartEl.appendChild(g);
+    });
+  }
+
+  // --- Unités d'insuline injectées ---
+  function bindCollapsible(toggleId, bodyId) {
+    const toggle = document.getElementById(toggleId);
+    const body = document.getElementById(bodyId);
+    toggle.addEventListener('click', () => {
+      const expanded = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', String(!expanded));
+      body.hidden = expanded;
+    });
+  }
+  bindCollapsible('introToggle', 'introBody');
+  bindCollapsible('summaryToggle', 'summaryBody');
+  document.getElementById('printBtn').addEventListener('click', () => window.print());
+
+  // --- Période de la vue d'ensemble / du PDF ---
+  const summaryRangeStartInput = document.getElementById('summaryRangeStart');
+  const summaryRangeEndInput = document.getElementById('summaryRangeEnd');
+
+  function syncSummaryRangeUI() {
+    const dates = listSummaryDates();
+    summaryRangeStartInput.value = state.summaryRange.start || dates[0] || '';
+    summaryRangeEndInput.value = state.summaryRange.end || dates[dates.length - 1] || '';
+  }
+  syncSummaryRangeUI();
+
+  summaryRangeStartInput.addEventListener('change', () => {
+    state.summaryRange.start = summaryRangeStartInput.value;
+    saveState();
+    recompute();
+    syncSummaryRangeUI();
+  });
+  summaryRangeEndInput.addEventListener('change', () => {
+    state.summaryRange.end = summaryRangeEndInput.value;
+    saveState();
+    recompute();
+    syncSummaryRangeUI();
+  });
+  document.getElementById('summaryRangeReset').addEventListener('click', () => {
+    state.summaryRange = { start: '', end: '' };
+    saveState();
+    recompute();
+    syncSummaryRangeUI();
+  });
+
+  function renderAbsenceRow(container, iso, absence) {
+    const node = absenceTemplate.content.firstElementChild.cloneNode(true);
+    const labelInput = node.querySelector('.absence-label');
+    const startInput = node.querySelector('.absence-start');
+    const endInput = node.querySelector('.absence-end');
+    const removeBtn = node.querySelector('.remove-absence');
+
+    labelInput.value = absence.label || '';
+    startInput.value = absence.start || '';
+    endInput.value = absence.end || '';
+
+    labelInput.addEventListener('input', () => {
+      absence.label = labelInput.value;
+      saveState();
+    });
+    startInput.addEventListener('change', () => {
+      absence.start = startInput.value;
+      saveState();
+      recompute();
+    });
+    endInput.addEventListener('change', () => {
+      absence.end = endInput.value;
+      saveState();
+      recompute();
+    });
+    removeBtn.addEventListener('click', () => {
+      const day = getDayData(iso);
+      day.absences = day.absences.filter((a) => a.id !== absence.id);
+      node.remove();
+      saveState();
+      recompute();
+    });
+
+    container.appendChild(node);
+  }
+
+  const extraCheckTemplate = document.getElementById('extraCheckTemplate');
+
+  function renderExtraCheckRow(container, iso, check) {
+    const node = extraCheckTemplate.content.firstElementChild.cloneNode(true);
+    const timeInput = node.querySelector('.extra-check-time');
+    const glucoseInput = node.querySelector('.extra-check-glucose');
+    const hiBtn = node.querySelector('.extra-check-hi');
+    const loBtn = node.querySelector('.extra-check-lo');
+    const removeBtn = node.querySelector('.remove-extra-check');
+
+    // Cette ligne n'est pas reconstruite par refreshTracking() (seul le
+    // panneau des injections l'est) : on met à jour son propre affichage
+    // localement au lieu de compter sur un re-rendu externe.
+    function syncGlucoseUI() {
+      glucoseInput.value = typeof check.glucose === 'number' ? check.glucose : '';
+      hiBtn.classList.toggle('active', check.glucose === 'HI');
+      loBtn.classList.toggle('active', check.glucose === 'LO');
+    }
+    syncGlucoseUI();
+    timeInput.value = check.time || '';
+
+    timeInput.addEventListener('change', () => {
+      check.time = timeInput.value;
+      saveState();
+      refreshTracking();
+    });
+    glucoseInput.addEventListener('change', () => {
+      check.glucose = parseGlucoseValue(glucoseInput.value);
+      syncGlucoseUI();
+      saveState();
+      refreshTracking();
+    });
+    hiBtn.addEventListener('click', () => {
+      check.glucose = check.glucose === 'HI' ? null : 'HI';
+      syncGlucoseUI();
+      saveState();
+      refreshTracking();
+    });
+    loBtn.addEventListener('click', () => {
+      check.glucose = check.glucose === 'LO' ? null : 'LO';
+      syncGlucoseUI();
+      saveState();
+      refreshTracking();
+    });
+    removeBtn.addEventListener('click', () => {
+      const day = getDayData(iso);
+      day.extraChecks = day.extraChecks.filter((c) => c.id !== check.id);
+      node.remove();
+      saveState();
+      refreshTracking();
+    });
+
+    container.appendChild(node);
+  }
+
+  function renderDayCard(iso) {
+    const node = dayTemplate.content.firstElementChild.cloneNode(true);
+    node.dataset.date = iso;
+    node.querySelector('.day-title').textContent = formatDayTitle(iso);
+
+    const absencesContainer = node.querySelector('.absences');
+    const day = getDayData(iso);
+    for (const absence of day.absences) {
+      renderAbsenceRow(absencesContainer, iso, absence);
+    }
+
+    node.querySelector('.add-absence').addEventListener('click', () => {
+      const absence = { id: uid(), label: '', start: '', end: '' };
+      day.absences.push(absence);
+      renderAbsenceRow(absencesContainer, iso, absence);
+      saveState();
+    });
+
+    const extraChecksContainer = node.querySelector('.extra-checks');
+    for (const check of day.extraChecks) {
+      renderExtraCheckRow(extraChecksContainer, iso, check);
+    }
+
+    node.querySelector('.add-extra-check').addEventListener('click', () => {
+      const check = { id: uid(), time: '', glucose: null };
+      day.extraChecks.push(check);
+      renderExtraCheckRow(extraChecksContainer, iso, check);
+      saveState();
+    });
+
+    return node;
+  }
+
+  function renderDayStrip() {
+    daystripEl.innerHTML = '';
+    for (const iso of listDates()) {
+      const chip = chipTemplate.content.firstElementChild.cloneNode(true);
+      chip.dataset.date = iso;
+      const d = new Date(iso + 'T00:00:00');
+      chip.querySelector('.chip-weekday').textContent = WEEKDAYS_SHORT[d.getDay()];
+      chip.querySelector('.chip-num').textContent = d.getDate();
+      if (iso === todayISO()) chip.classList.add('is-today');
+      chip.addEventListener('click', () => selectDate(iso));
+      daystripEl.appendChild(chip);
+    }
+  }
+
+  function updateStripStatuses() {
+    const byDate = scheduleByDate();
+    daystripEl.querySelectorAll('.day-chip').forEach((chip) => {
+      const iso = chip.dataset.date;
+      chip.classList.toggle('is-selected', iso === selectedDate);
+      chip.classList.remove('status-ok', 'status-warn', 'status-danger');
+      const times = byDate[iso] || [];
+      if (times.some((t) => t.warnings.includes('creneau-impossible'))) chip.classList.add('status-danger');
+      else if (times.some((t) => t.warnings.includes('ecart-hors-tolerance') || t.warnings.includes('nuit'))) chip.classList.add('status-warn');
+      else if (times.length) chip.classList.add('status-ok');
+      const hasAbsence = getDayData(iso).absences.some((a) => a.start && a.end);
+      chip.classList.toggle('has-absence', hasAbsence);
+    });
+  }
+
+  function scrollChipIntoView(iso, behavior) {
+    const chip = daystripEl.querySelector(`[data-date="${iso}"]`);
+    if (chip) chip.scrollIntoView({ behavior, inline: 'center', block: 'nearest' });
+  }
+
+  function selectDate(iso) {
+    selectedDate = iso;
+    renderDayDetail();
+    renderDetailResults(); // le calcul (lastSchedule) existe déjà pour tous les jours, il manquait juste son affichage sur le jour nouvellement sélectionné
+    updateStripStatuses();
+    scrollChipIntoView(iso, 'smooth');
+  }
+
+  function renderDayDetail() {
+    ensureSelectedDate();
+    dayDetailEl.innerHTML = '';
+    dayDetailEl.appendChild(renderDayCard(selectedDate));
+  }
+
+  function renderAll() {
+    renderDayStrip();
+    renderDayDetail();
+    recompute();
+  }
+
+  // --- Réglages ---
+  bindCollapsible('settingsToggle', 'settingsBody');
+
+  const toleranceInput = document.getElementById('toleranceInput');
+  const marginInput = document.getElementById('marginInput');
+  const defaultTimeInput = document.getElementById('defaultTimeInput');
+  const anchorEnabled = document.getElementById('anchorEnabled');
+  const anchorInputs = document.getElementById('anchorInputs');
+  const anchorDate = document.getElementById('anchorDate');
+  const anchorTime = document.getElementById('anchorTime');
+  const avoidNightEnabled = document.getElementById('avoidNightEnabled');
+  const avoidNightInputs = document.getElementById('avoidNightInputs');
+  const avoidNightStart = document.getElementById('avoidNightStart');
+  const avoidNightEnd = document.getElementById('avoidNightEnd');
+
+  function syncSettingsUI() {
+    toleranceInput.value = state.settings.tolerance;
+    marginInput.value = state.settings.marginMin;
+    defaultTimeInput.value = state.settings.defaultTime;
+    anchorEnabled.checked = !!state.settings.anchorEnabled;
+    anchorInputs.hidden = !state.settings.anchorEnabled;
+    anchorDate.value = state.settings.anchor.date;
+    anchorTime.value = state.settings.anchor.time;
+    avoidNightEnabled.checked = !!state.settings.avoidNightEnabled;
+    avoidNightInputs.hidden = !state.settings.avoidNightEnabled;
+    avoidNightStart.value = state.settings.avoidNightStart;
+    avoidNightEnd.value = state.settings.avoidNightEnd;
+    document.getElementById('ghOwner').value = state.sync.owner;
+    document.getElementById('ghRepo').value = state.sync.repo;
+    document.getElementById('ghToken').value = state.sync.token;
+  }
+
+  toleranceInput.addEventListener('change', () => {
+    state.settings.tolerance = Number(toleranceInput.value) || 60;
+    saveState();
+    recompute();
+  });
+  marginInput.addEventListener('change', () => {
+    state.settings.marginMin = Number(marginInput.value) || 0;
+    saveState();
+    recompute();
+  });
+  defaultTimeInput.addEventListener('change', () => {
+    state.settings.defaultTime = defaultTimeInput.value;
+    saveState();
+    recompute();
+  });
+  anchorEnabled.addEventListener('change', () => {
+    state.settings.anchorEnabled = anchorEnabled.checked;
+    anchorInputs.hidden = !anchorEnabled.checked;
+    saveState();
+    recompute();
+  });
+  anchorDate.addEventListener('change', () => {
+    state.settings.anchor.date = anchorDate.value;
+    saveState();
+    recompute();
+  });
+  anchorTime.addEventListener('change', () => {
+    state.settings.anchor.time = anchorTime.value;
+    saveState();
+    recompute();
+  });
+  avoidNightEnabled.addEventListener('change', () => {
+    state.settings.avoidNightEnabled = avoidNightEnabled.checked;
+    avoidNightInputs.hidden = !avoidNightEnabled.checked;
+    saveState();
+    recompute();
+  });
+  avoidNightStart.addEventListener('change', () => {
+    state.settings.avoidNightStart = avoidNightStart.value;
+    saveState();
+    recompute();
+  });
+  avoidNightEnd.addEventListener('change', () => {
+    state.settings.avoidNightEnd = avoidNightEnd.value;
+    saveState();
+    recompute();
+  });
+
+  // --- Export / import ---
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    // Ne contient jamais le token GitHub, uniquement les données de planning.
+    const blob = new Blob([JSON.stringify(buildExportPayload(), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `planificat-${todayISO()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById('importInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        applyRemotePayload(parsed); // conserve les réglages GitHub déjà en place
+        saveState();
+        syncSettingsUI();
+        renderAll();
+      } catch (err) {
+        alert("Le fichier importé n'est pas valide.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  // Transfert par copier/coller : évite de manipuler un fichier.
+  const copyStatusEl = document.getElementById('copyStatus');
+  function showCopyStatus(kind, msg) {
+    copyStatusEl.hidden = false;
+    copyStatusEl.className = 'sync-status ' + kind;
+    copyStatusEl.textContent = msg;
+  }
+  document.getElementById('copyDataBtn').addEventListener('click', async () => {
+    const text = JSON.stringify(buildExportPayload());
+    try {
+      await navigator.clipboard.writeText(text);
+      showCopyStatus('ok', 'Données copiées. Colle-les dans un message que tu t’envoies.');
+    } catch (e) {
+      const ta = document.getElementById('pasteData');
+      ta.value = text;
+      ta.focus();
+      ta.select();
+      showCopyStatus('busy', 'Copie automatique impossible : le texte est dans la case, sélectionne-le et copie-le.');
+    }
+  });
+  document.getElementById('pasteDataBtn').addEventListener('click', () => {
+    const ta = document.getElementById('pasteData');
+    try {
+      const parsed = JSON.parse(ta.value.trim());
+      if (!parsed || typeof parsed !== 'object' || !parsed.days) throw new Error('format');
+      applyRemotePayload(parsed);
+      saveState();
+      syncSettingsUI();
+      renderAll();
+      ta.value = '';
+      showCopyStatus('ok', 'Données chargées.');
+    } catch (err) {
+      showCopyStatus('error', 'Texte non reconnu : il faut copier tout le texte, du premier au dernier caractère.');
+    }
+  });
+
+  // --- Synchronisation GitHub ---
+  // Les données sont stockées dans un fichier `data.json` d'un dépôt GitHub
+  // *privé* séparé du code (voir README) — jamais publié via GitHub Pages,
+  // accessible uniquement via l'API avec le token. Le token lui-même n'est
+  // jamais inclus dans ce qui est exporté ou envoyé à GitHub.
+
+  const ghOwnerInput = document.getElementById('ghOwner');
+  const ghRepoInput = document.getElementById('ghRepo');
+  const ghTokenInput = document.getElementById('ghToken');
+  const syncNowBtn = document.getElementById('syncNowBtn');
+  const syncStatusEl = document.getElementById('syncStatus');
+
+  function utf8ToB64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    bytes.forEach((b) => { binary += String.fromCharCode(b); });
+    return btoa(binary);
+  }
+
+  function b64ToUtf8(b64) {
+    const binary = atob(b64.replace(/\n/g, ''));
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+
+  // Ce qui part réellement vers GitHub (ou un export manuel) : jamais les
+  // identifiants de synchro eux-mêmes.
+  function buildExportPayload() {
+    return {
+      updatedAt: state.updatedAt,
+      settings: state.settings,
+      days: state.days,
+    };
+  }
+
+  function applyRemotePayload(payload) {
+    state.updatedAt = payload.updatedAt || new Date().toISOString();
+    state.settings = { ...state.settings, ...(payload.settings || {}) };
+    state.days = payload.days || {};
+  }
+
+  function setSyncStatus(kind, message) {
+    syncStatusEl.className = 'sync-status' + (kind ? ' ' + kind : '');
+    syncStatusEl.textContent = message;
+  }
+
+  function formatDateTime(iso) {
+    return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function hasGithubConfig() {
+    return !!(state.sync.owner && state.sync.repo && state.sync.token);
+  }
+
+  // Permet de partager un lien "?owner=...&repo=...&token=..." pour
+  // pré-remplir la config GitHub sur un nouvel appareil sans tout retaper.
+  // L'URL est nettoyée immédiatement pour ne pas laisser le token trainer
+  // dans l'historique du navigateur.
+  function applyConfigFromUrl() {
+    const params = new URLSearchParams(location.search);
+    const owner = params.get('owner');
+    const repo = params.get('repo');
+    const token = params.get('token');
+    if (!owner && !repo && !token) return;
+    if (owner) state.sync.owner = owner;
+    if (repo) state.sync.repo = repo;
+    if (token) state.sync.token = token;
+    saveState({ touch: false });
+    const url = new URL(location.href);
+    url.search = '';
+    history.replaceState({}, '', url);
+  }
+
+  async function githubContentsRequest(method, body) {
+    const { owner, repo, path, token } = state.sync;
+    const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeURIComponent(path)}`;
+    return fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      keepalive: method === 'PUT',
+    });
+  }
+
+  async function pullRemote() {
+    const res = await githubContentsRequest('GET');
+    if (res.status === 404) {
+      state.sync.sha = null;
+      return null;
+    }
+    if (!res.ok) {
+      const info = await res.json().catch(() => ({}));
+      throw new Error(info.message || `GitHub a répondu ${res.status}`);
+    }
+    const json = await res.json();
+    state.sync.sha = json.sha;
+    return JSON.parse(b64ToUtf8(json.content));
+  }
+
+  async function pushRemote(payload) {
+    const body = { message: 'Mise à jour PlanifiCat', content: utf8ToB64(JSON.stringify(payload, null, 2)) };
+    if (state.sync.sha) body.sha = state.sync.sha;
+    const res = await githubContentsRequest('PUT', body);
+    if (!res.ok) {
+      const info = await res.json().catch(() => ({}));
+      throw new Error(info.message || `GitHub a répondu ${res.status}`);
+    }
+    const json = await res.json();
+    state.sync.sha = json.content.sha;
+  }
+
+  let syncing = false;
+
+  async function syncNow(trigger) {
+    if (!hasGithubConfig()) {
+      setSyncStatus('', 'Non configuré : renseigne propriétaire, dépôt et token.');
+      return;
+    }
+    if (syncing) return;
+    syncing = true;
+    setSyncStatus('busy', 'Synchronisation en cours…');
+    try {
+      const remote = await pullRemote();
+      const localUpdatedAt = state.updatedAt;
+      const lastSynced = state.sync.lastSyncedAt;
+
+      if (remote && remote.updatedAt && remote.updatedAt !== lastSynced && remote.updatedAt !== localUpdatedAt) {
+        // Les données distantes ont changé ailleurs depuis notre dernière synchro : conflit.
+        const remoteIsNewer = remote.updatedAt > localUpdatedAt;
+        let keepLocal;
+        if (localUpdatedAt === NEVER_MODIFIED) {
+          keepLocal = false; // appareil vierge : rien à protéger, on reprend GitHub sans poser de question
+        } else if (trigger === 'manual') {
+          keepLocal = confirm(
+            `Des données plus récentes existent sur GitHub (${formatDateTime(remote.updatedAt)}).\n\n` +
+            `OK = garder mes données locales et les envoyer (écrase le distant)\n` +
+            `Annuler = charger les données distantes (écrase mes modifs locales non synchronisées)`
+          );
+        } else {
+          keepLocal = !remoteIsNewer;
+        }
+        if (!keepLocal) {
+          applyRemotePayload(remote);
+          state.sync.lastSyncedAt = remote.updatedAt;
+          saveState({ touch: false });
+          syncSettingsUI();
+          renderAll();
+          setSyncStatus('ok', `Données distantes chargées — ${formatDateTime(new Date().toISOString())}`);
+          syncing = false;
+          return;
+        }
+      }
+
+      // Le bouton manuel envoie toujours, même sans changement, avec un
+      // horodatage pour que GitHub enregistre bien un nouveau commit.
+      if (!remote || trigger === 'manual' || localUpdatedAt !== lastSynced) {
+        const payload = { ...buildExportPayload(), syncedAt: new Date().toISOString() };
+        await pushRemote(payload);
+        state.sync.lastSyncedAt = payload.updatedAt;
+        saveState({ touch: false });
+      }
+      setSyncStatus('ok', `Synchronisé — ${formatDateTime(new Date().toISOString())}`);
+    } catch (e) {
+      console.error(e);
+      setSyncStatus('error', 'Erreur : ' + e.message);
+    } finally {
+      syncing = false;
+    }
+  }
+
+  let autoSyncTimer = null;
+  function scheduleAutoSync() {
+    if (!hasGithubConfig()) return;
+    clearTimeout(autoSyncTimer);
+    autoSyncTimer = setTimeout(() => syncNow('auto'), 4000);
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && hasGithubConfig()) {
+      clearTimeout(autoSyncTimer);
+      syncNow('auto');
+    }
+  });
+
+  ghOwnerInput.addEventListener('change', () => {
+    state.sync.owner = ghOwnerInput.value.trim();
+    saveState({ touch: false });
+  });
+  ghRepoInput.addEventListener('change', () => {
+    state.sync.repo = ghRepoInput.value.trim();
+    saveState({ touch: false });
+  });
+  ghTokenInput.addEventListener('change', () => {
+    state.sync.token = ghTokenInput.value.trim();
+    saveState({ touch: false });
+  });
+  syncNowBtn.addEventListener('click', () => syncNow('manual'));
+
+  // --- Démarrage ---
+  applyConfigFromUrl();
+  syncSettingsUI();
+  renderAll();
+  // Le bandeau contient aussi des jours passés désormais : sans ça, l'app
+  // s'ouvrirait scrollée sur le tout premier jour (le plus ancien) au lieu
+  // d'aujourd'hui.
+  scrollChipIntoView(selectedDate, 'auto');
+  if (hasGithubConfig()) syncNow('auto');
+
+  // Une fois qu'une nouvelle version du service worker prend le contrôle
+  // de la page (après une mise à jour de l'app), recharge automatiquement
+  // une fois pour afficher la nouvelle version — sans quoi il faudrait
+  // recharger la page manuellement une deuxième fois pour la voir, ce
+  // qu'on ne peut pas demander à quelqu'un qui ne connaît pas ce détail
+  // technique. Le drapeau `refreshed` évite une boucle de rechargement.
+  if ('serviceWorker' in navigator && !window.Capacitor) {
+    window.addEventListener('load', () => {
+      // ?v=APP_VERSION (à incrémenter à chaque déploiement) : une URL
+      // différente à chaque version garantit un vrai cache-miss réseau
+      // pour service-worker.js, même si GitHub Pages ou le navigateur
+      // gardent l'ancienne réponse en cache plus longtemps que prévu pour
+      // l'URL sans paramètre.
+      navigator.serviceWorker
+        .register(`service-worker.js?v=${APP_VERSION}`)
+        .then((reg) => {
+          reg.update();
+          // Revérifie aussi à chaque fois que l'app repasse au premier
+          // plan (elle était fermée/en arrière-plan), plutôt que de
+          // compter uniquement sur le rythme de vérification interne du
+          // navigateur.
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') reg.update();
+          });
+        })
+        .catch(() => {});
+    });
+    let refreshed = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshed) return;
+      refreshed = true;
+      window.location.reload();
+    });
+  }
+})();
