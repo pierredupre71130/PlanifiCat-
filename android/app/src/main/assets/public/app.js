@@ -7,7 +7,7 @@
   // À incrémenter à chaque déploiement (voir l'enregistrement du service
   // worker plus bas) : force une URL différente pour service-worker.js à
   // chaque version, pour éviter qu'il reste bloqué en cache.
-  const APP_VERSION = '9';
+  const APP_VERSION = '10';
 
   // Toutes les dates sont manipulées en UTC pur (Date.UTC / getUTCDate...)
   // pour éviter tout décalage lié au fuseau horaire local : mélanger une
@@ -654,7 +654,12 @@
   }
   bindCollapsible('introToggle', 'introBody');
   bindCollapsible('summaryToggle', 'summaryBody');
-  document.getElementById('printBtn').addEventListener('click', () => window.print());
+  document.getElementById('printBtn').addEventListener('click', () => {
+    // Dans l'appli Android (APK), window.print() ne fait rien : on passe par
+    // l'impression native, qui propose « Enregistrer au format PDF ».
+    if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') window.AndroidPrint.print();
+    else window.print();
+  });
 
   // --- Période de la vue d'ensemble / du PDF ---
   const summaryRangeStartInput = document.getElementById('summaryRangeStart');
