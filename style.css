@@ -453,3 +453,5 @@ main {
   .summary-table tr.status-warn,
   .summary-table tr.status-danger { background: #f0f0f0; }
 }
+
+#pasteData { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--border, #bbb); background: var(--surface, #fff); color: inherit; }

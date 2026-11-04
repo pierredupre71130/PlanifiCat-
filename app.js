@@ -7,7 +7,7 @@
   // À incrémenter à chaque déploiement (voir l'enregistrement du service
   // worker plus bas) : force une URL différente pour service-worker.js à
   // chaque version, pour éviter qu'il reste bloqué en cache.
-  const APP_VERSION = '8';
+  const APP_VERSION = '9';
 
   // Toutes les dates sont manipulées en UTC pur (Date.UTC / getUTCDate...)
   // pour éviter tout décalage lié au fuseau horaire local : mélanger une
@@ -973,6 +973,42 @@
     };
     reader.readAsText(file);
     e.target.value = '';
+  });
+
+  // Transfert par copier/coller : évite de manipuler un fichier.
+  const copyStatusEl = document.getElementById('copyStatus');
+  function showCopyStatus(kind, msg) {
+    copyStatusEl.hidden = false;
+    copyStatusEl.className = 'sync-status ' + kind;
+    copyStatusEl.textContent = msg;
+  }
+  document.getElementById('copyDataBtn').addEventListener('click', async () => {
+    const text = JSON.stringify(buildExportPayload());
+    try {
+      await navigator.clipboard.writeText(text);
+      showCopyStatus('ok', 'Données copiées. Colle-les dans un message que tu t’envoies.');
+    } catch (e) {
+      const ta = document.getElementById('pasteData');
+      ta.value = text;
+      ta.focus();
+      ta.select();
+      showCopyStatus('busy', 'Copie automatique impossible : le texte est dans la case, sélectionne-le et copie-le.');
+    }
+  });
+  document.getElementById('pasteDataBtn').addEventListener('click', () => {
+    const ta = document.getElementById('pasteData');
+    try {
+      const parsed = JSON.parse(ta.value.trim());
+      if (!parsed || typeof parsed !== 'object' || !parsed.days) throw new Error('format');
+      applyRemotePayload(parsed);
+      saveState();
+      syncSettingsUI();
+      renderAll();
+      ta.value = '';
+      showCopyStatus('ok', 'Données chargées.');
+    } catch (err) {
+      showCopyStatus('error', 'Texte non reconnu : il faut copier tout le texte, du premier au dernier caractère.');
+    }
   });
 
   // --- Synchronisation GitHub ---

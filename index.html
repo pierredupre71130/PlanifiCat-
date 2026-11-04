@@ -104,6 +104,17 @@
           <input type="file" id="importInput" accept="application/json" hidden />
         </label>
       </div>
+      <div class="field-row" style="flex-direction:column;align-items:stretch;gap:8px">
+        <strong>Changer de téléphone sans fichier</strong>
+        <div class="field-row buttons-row">
+          <button class="btn secondary" id="copyDataBtn" type="button">📋 Copier mes données</button>
+        </div>
+        <textarea id="pasteData" rows="3" placeholder="Sur le nouveau téléphone : colle ici le texte copié, puis touche « Charger »."></textarea>
+        <div class="field-row buttons-row">
+          <button class="btn secondary" id="pasteDataBtn" type="button">Charger les données collées</button>
+        </div>
+        <p class="sync-status" id="copyStatus" hidden></p>
+      </div>
 
       <hr class="sep" />
       <h3 class="sub-heading">☁️ Synchronisation GitHub</h3>
