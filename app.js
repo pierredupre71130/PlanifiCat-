@@ -7,7 +7,7 @@
   // À incrémenter à chaque déploiement (voir l'enregistrement du service
   // worker plus bas) : force une URL différente pour service-worker.js à
   // chaque version, pour éviter qu'il reste bloqué en cache.
-  const APP_VERSION = '6';
+  const APP_VERSION = '7';
 
   // Toutes les dates sont manipulées en UTC pur (Date.UTC / getUTCDate...)
   // pour éviter tout décalage lié au fuseau horaire local : mélanger une

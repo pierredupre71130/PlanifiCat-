@@ -153,9 +153,11 @@ main {
 .sub-heading { margin: 0; font-size: 0.95rem; }
 .hint { margin: -0.3rem 0 0.2rem; font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; }
 .sync-status { margin: 0; font-size: 0.85rem; color: var(--text-muted); }
-.sync-status.ok { color: var(--ok); }
-.sync-status.error { color: var(--danger); }
-.sync-status.busy { color: var(--warn); }
+.sync-status.ok { color: #fff; background: #1f9d55; font-weight: 700; padding: 10px 12px; border-radius: 10px; font-size: 1rem; }
+.sync-status.ok::before { content: '✓ '; }
+.sync-status.error { color: #fff; background: #c0392b; font-weight: 700; padding: 10px 12px; border-radius: 10px; font-size: 1rem; }
+.sync-status.error::before { content: '✗ '; }
+.sync-status.busy { color: var(--warn); background: var(--warn-bg); padding: 10px 12px; border-radius: 10px; }
 
 .btn {
   border: 1px solid var(--primary);
