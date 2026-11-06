@@ -7,7 +7,7 @@
   // À incrémenter à chaque déploiement (voir l'enregistrement du service
   // worker plus bas) : force une URL différente pour service-worker.js à
   // chaque version, pour éviter qu'il reste bloqué en cache.
-  const APP_VERSION = '10';
+  const APP_VERSION = '11';
 
   // Toutes les dates sont manipulées en UTC pur (Date.UTC / getUTCDate...)
   // pour éviter tout décalage lié au fuseau horaire local : mélanger une
@@ -1227,6 +1227,26 @@
   // d'aujourd'hui.
   scrollChipIntoView(selectedDate, 'auto');
   if (hasGithubConfig()) syncNow('auto');
+
+  // Si l'appli reste ouverte (en arrière-plan) d'un jour à l'autre, le
+  // bandeau gardait "aujourd'hui" sur l'ancien jour. Au retour au premier
+  // plan, si la date a changé, on se recale sur le jour courant.
+  let lastRenderedDay = todayISO();
+  function refreshIfNewDay() {
+    const now = todayISO();
+    if (now === lastRenderedDay) return;
+    lastRenderedDay = now;
+    selectedDate = null;
+    ensureSelectedDate();
+    renderAll();
+    syncSummaryRangeUI();
+    scrollChipIntoView(selectedDate, 'auto');
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshIfNewDay();
+  });
+  window.addEventListener('focus', refreshIfNewDay);
+  setInterval(refreshIfNewDay, 60000);
 
   // Une fois qu'une nouvelle version du service worker prend le contrôle
   // de la page (après une mise à jour de l'app), recharge automatiquement
